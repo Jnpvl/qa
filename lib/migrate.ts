@@ -6,6 +6,7 @@ import type {
   DemoState,
   Member,
   Plan,
+  Project,
   RunResult,
   TestCase,
   TestRun,
@@ -178,9 +179,13 @@ export function migrate(raw: unknown): DemoState | null {
     return null
   }
   const cases = data.cases.map(normalizeCase).filter((item): item is TestCase => Boolean(item))
+  const projects = (data.projects as Project[]).map((project) => ({
+    ...project,
+    sample: project.sample === true || project.id === "prj_tienda",
+  }))
   return {
     version: 2,
-    projects: data.projects as DemoState["projects"],
+    projects,
     sprints: asArray(data.sprints),
     suites: data.suites as DemoState["suites"],
     cases,
@@ -189,5 +194,22 @@ export function migrate(raw: unknown): DemoState | null {
     defects: asArray(data.defects).map(normalizeDefect).filter((item): item is Defect => Boolean(item)),
     members: asArray(data.members).map(normalizeMember).filter((item): item is Member => Boolean(item)),
     autoAdvance: typeof data.autoAdvance === "boolean" ? data.autoAdvance : true,
+    initialized: data.initialized === false ? false : true,
+  }
+}
+
+export function emptyWorkspace(): DemoState {
+  return {
+    version: 2,
+    projects: [],
+    sprints: [],
+    suites: [],
+    cases: [],
+    runs: [],
+    plans: [],
+    defects: [],
+    members: [],
+    autoAdvance: true,
+    initialized: false,
   }
 }

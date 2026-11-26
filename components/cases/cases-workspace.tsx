@@ -326,14 +326,21 @@ export function CasesWorkspace() {
             }
           />
           {suites.length === 0 ? (
-            <EmptyState
-              title="Crea la primera suite"
-              body="Las suites agrupan los casos. Puedes anidar secciones, por ejemplo Login y, dentro, Recuperación de acceso."
-              action={
-                <p className="text-sm text-muted-foreground">
-                  Usa «Nueva suite» en el panel de la izquierda, o ábrelo en el teléfono con el botón Suites.
-                </p>
-              }
+            <FirstSuite
+              onCreate={(name) => {
+                try {
+                  const created = store.createSuite({
+                    projectId: project.id,
+                    parentId: null,
+                    name,
+                    description: "",
+                  })
+                  chooseSuite(created.id)
+                  toast.success("Suite creada")
+                } catch (error) {
+                  reportError(error)
+                }
+              }}
             />
           ) : (
             <>
@@ -876,6 +883,32 @@ function CaseMenu({
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+}
+
+function FirstSuite({ onCreate }: { onCreate: (name: string) => void }) {
+  const [name, setName] = useState("General")
+  return (
+    <EmptyState
+      title="Crea la primera suite"
+      body="Las suites agrupan los casos. Empieza con una carpeta, por ejemplo General o Login."
+      action={
+        <form
+          className="mx-auto flex w-full max-w-sm flex-col gap-2 sm:flex-row"
+          onSubmit={(event) => {
+            event.preventDefault()
+            onCreate(name)
+          }}
+        >
+          <Input
+            aria-label="Nombre de la suite"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
+          <Button type="submit">Crear suite</Button>
+        </form>
+      }
+    />
   )
 }
 

@@ -34,6 +34,7 @@ export interface Project {
   name: string
   description: string
   createdAt: string
+  sample?: boolean
 }
 
 export interface Sprint {
@@ -152,6 +153,7 @@ export interface DemoState {
   defects: Defect[]
   members: Member[]
   autoAdvance: boolean
+  initialized: boolean
 }
 
 export interface CaseDraft {

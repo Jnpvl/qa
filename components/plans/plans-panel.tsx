@@ -269,7 +269,7 @@ function PlanPicker({
   onCaseIds,
 }: {
   suites: { id: string; projectId: string; parentId: string | null; name: string; description: string; order: number }[]
-  cases: { id: string; suiteId: string; number: number; title: string }[]
+  cases: { id: string; suiteId: string; number: number; title: string; status: string }[]
   projectKey: string
   suiteIds: string[]
   caseIds: string[]
@@ -294,7 +294,7 @@ function PlanPicker({
             {row.suite.name}
           </label>
           {cases
-            .filter((item) => item.suiteId === row.suite.id)
+            .filter((item) => item.suiteId === row.suite.id && item.status !== "obsoleto")
             .map((item) => (
               <label key={item.id} className="mt-1 flex items-center gap-2 pl-6 text-sm">
                 <Checkbox

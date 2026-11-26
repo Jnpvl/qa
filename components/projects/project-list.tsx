@@ -38,6 +38,7 @@ export function ProjectList() {
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState<Project | null>(null)
   const [removing, setRemoving] = useState<Project | null>(null)
+  const [dropSample, setDropSample] = useState(false)
 
   const projects = useMemo(() => {
     if (!data) return []
@@ -86,6 +87,11 @@ export function ProjectList() {
                 Restaurar
               </span>
             </label>
+            {data.projects.some((item) => item.sample) ? (
+              <Button variant="outline" onClick={() => setDropSample(true)}>
+                Quitar ejemplo
+              </Button>
+            ) : null}
             <Button onClick={() => setCreating(true)}>
               <Plus />
               Nuevo proyecto
@@ -169,6 +175,11 @@ export function ProjectList() {
                           onClick={(event) => event.stopPropagation()}
                         >
                           {project.name}
+                        {project.sample ? (
+                          <span className="ml-2 rounded-full border px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
+                            Ejemplo
+                          </span>
+                        ) : null}
                         </Link>
                         {project.description ? (
                           <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
@@ -202,6 +213,29 @@ export function ProjectList() {
         }}
         project={editing ?? undefined}
       />
+      <AlertDialog open={dropSample} onOpenChange={setDropSample}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Quitar el proyecto de ejemplo?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se borra la tienda de demostración y lo que hayas cambiado dentro de ella. Tus otros proyectos se quedan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                store.removeSample()
+                setDropSample(false)
+                toast.success("Se quitó el proyecto de ejemplo")
+              }}
+            >
+              Quitar ejemplo
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog open={Boolean(removing)} onOpenChange={(open) => !open && setRemoving(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -254,6 +288,11 @@ function ProjectSummary({
         <div>
           <Link href={`/proyectos/${project.id}/casos`} className="font-medium">
             {project.name}
+            {project.sample ? (
+              <span className="ml-2 rounded-full border px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
+                Ejemplo
+              </span>
+            ) : null}
           </Link>
           <p className="font-mono text-xs text-muted-foreground">{project.key}</p>
         </div>

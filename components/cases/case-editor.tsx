@@ -37,6 +37,7 @@ import {
 } from "@/lib/labels"
 import { flattenSuites } from "@/lib/suites"
 import { formatBytes, readAttachment } from "@/lib/attachments"
+import { FilePicker } from "@/components/file-picker"
 import { caseCode, createId, formatDateTime, normalize } from "@/lib/text"
 import { defectStatusLabel } from "@/lib/labels"
 import { ResultBadge } from "@/components/status-pills"
@@ -88,7 +89,7 @@ export function CaseEditor() {
   const suites = data && project ? data.suites.filter((item) => item.projectId === project.id) : []
   const sprints = data && project ? data.sprints.filter((item) => item.projectId === project.id) : []
   const flat = project ? flattenSuites(data?.suites ?? [], project.id) : []
-  const loadKey = `${project?.id ?? ""}:${caseId}:${testCase?.updatedAt ?? ""}`
+  const loadKey = `${project?.id ?? ""}:${caseId}`
   const [loadedKey, setLoadedKey] = useState<string | null>(null)
   const [draft, setDraft] = useState<CaseDraft | null>(null)
   const [baseline, setBaseline] = useState("")
@@ -546,13 +547,9 @@ export function CaseEditor() {
                 ))}
               </ul>
             )}
-            <Input
-              type="file"
-              aria-label="Adjuntar archivo al caso"
-              onChange={(event) => {
-                const file = event.target.files?.[0]
-                event.target.value = ""
-                if (!file) return
+            <FilePicker
+              label="Adjuntar archivo"
+              onFile={(file) => {
                 readAttachment(file)
                   .then((attachment) => store.addCaseAttachment(testCase.id, attachment))
                   .catch(reportError)

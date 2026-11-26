@@ -9,6 +9,16 @@ import {
   Plus,
 } from "lucide-react"
 import { FormField, reportError } from "@/components/bits"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -49,6 +59,7 @@ export function SuiteTree({
   const projectSuites = suites.filter((suite) => suite.projectId === projectId)
   const projectCases = cases.filter((item) => item.projectId === projectId)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const [removing, setRemoving] = useState<Suite | null>(null)
   const [editor, setEditor] = useState<
     | { mode: "create"; parentId: string | null }
     | { mode: "rename"; suite: Suite }
@@ -111,14 +122,7 @@ export function SuiteTree({
             onCreateChild={(parentId) => setEditor({ mode: "create", parentId })}
             onRename={(target) => setEditor({ mode: "rename", suite: target })}
             onMove={(target) => setEditor({ mode: "move", suite: target })}
-            onDelete={(target) => {
-              try {
-                store.deleteSuite(target.id)
-                if (selectedId === target.id) onSelect("todas")
-              } catch (error) {
-                reportError(error)
-              }
-            }}
+            onDelete={(target) => setRemoving(target)}
             onReorder={(id, direction) => store.reorderSuite(id, direction)}
           />
         ))
@@ -139,6 +143,34 @@ export function SuiteTree({
         onClose={() => setEditor(null)}
         onCreated={(id) => onSelect(id)}
       />
+      <AlertDialog open={Boolean(removing)} onOpenChange={(open) => !open && setRemoving(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar {removing?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Solo se puede si no tiene subsecciones ni casos. Esos hay que moverlos o eliminarlos antes.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (!removing) return
+                try {
+                  store.deleteSuite(removing.id)
+                  if (selectedId === removing.id) onSelect("todas")
+                  setRemoving(null)
+                } catch (error) {
+                  reportError(error)
+                }
+              }}
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

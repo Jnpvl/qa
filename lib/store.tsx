@@ -10,7 +10,8 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react"
-import { migrate } from "@/lib/migrate"
+import { markBackup } from "@/lib/backup"
+import { emptyWorkspace, migrate } from "@/lib/migrate"
 import { readState, writeState } from "@/lib/storage"
 import { seedData } from "@/lib/seed"
 import { wouldCycle } from "@/lib/suites"
@@ -72,8 +73,14 @@ function update(recipe: (draft: DemoState) => void) {
   if (!snapshot) throw new Error("La demo todavía está cargando.")
   const next = structuredClone(snapshot)
   recipe(next)
+  writeState(next, { countEdit: true })
   snapshot = next
+  emit()
+}
+
+function commitState(next: DemoState) {
   writeState(next)
+  snapshot = next
   emit()
 }
 
@@ -131,9 +138,30 @@ function assertKey(state: DemoState, key: string, ignoreId?: string) {
 
 const actions = {
   reset() {
-    snapshot = structuredClone(seedData)
-    writeState(snapshot)
-    emit()
+    const next = structuredClone(seedData)
+    next.initialized = true
+    commitState(next)
+  },
+  startEmpty() {
+    const next = emptyWorkspace()
+    next.initialized = true
+    commitState(next)
+  },
+  loadDemo() {
+    const next = structuredClone(seedData)
+    next.initialized = true
+    commitState(next)
+  },
+  removeSample() {
+    update((draft) => {
+      const sampleIds = new Set(
+        draft.projects.filter((item) => item.sample || item.id === "prj_tienda").map((item) => item.id),
+      )
+      for (const id of sampleIds) dropProject(draft, id)
+    })
+  },
+  downloadBackup() {
+    markBackup()
   },
   createProject(input: { name: string; key: string; description: string }) {
     const state = current()
@@ -172,14 +200,7 @@ const actions = {
   },
   deleteProject(id: string) {
     update((draft) => {
-      draft.projects = draft.projects.filter((item) => item.id !== id)
-      draft.sprints = draft.sprints.filter((item) => item.projectId !== id)
-      draft.suites = draft.suites.filter((item) => item.projectId !== id)
-      draft.cases = draft.cases.filter((item) => item.projectId !== id)
-      draft.runs = draft.runs.filter((item) => item.projectId !== id)
-      draft.plans = draft.plans.filter((item) => item.projectId !== id)
-      draft.defects = draft.defects.filter((item) => item.projectId !== id)
-      draft.members = draft.members.filter((item) => item.projectId !== id)
+      dropProject(draft, id)
     })
   },
   createSprint(input: {
@@ -792,10 +813,21 @@ const actions = {
   replaceState(raw: unknown) {
     const next = migrate(raw)
     if (!next) throw new Error("Ese archivo no es un respaldo de Casos.")
-    snapshot = next
-    writeState(next)
-    emit()
+    next.initialized = true
+    commitState(next)
+    markBackup()
   },
+}
+
+function dropProject(draft: DemoState, id: string) {
+  draft.projects = draft.projects.filter((item) => item.id !== id)
+  draft.sprints = draft.sprints.filter((item) => item.projectId !== id)
+  draft.suites = draft.suites.filter((item) => item.projectId !== id)
+  draft.cases = draft.cases.filter((item) => item.projectId !== id)
+  draft.runs = draft.runs.filter((item) => item.projectId !== id)
+  draft.plans = draft.plans.filter((item) => item.projectId !== id)
+  draft.defects = draft.defects.filter((item) => item.projectId !== id)
+  draft.members = draft.members.filter((item) => item.projectId !== id)
 }
 
 function cleanSteps(steps: CaseDraft["steps"]) {

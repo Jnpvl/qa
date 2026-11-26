@@ -83,6 +83,12 @@ export function RunReport() {
         <p className="text-2xl font-semibold tabular-nums">
           {stats.passRate === null ? "Sin aprobación todavía" : `${stats.passRate}% aprobado`}
         </p>
+        <p className="text-xs text-muted-foreground">
+          Sobre casos ejecutados, sin bloqueados ni omitidos.
+        </p>
+        <p className="text-sm">
+          {stats.percent}% de avance · {stats.done} de {stats.total} con resultado
+        </p>
         <p className="text-sm text-muted-foreground">
           {stats.passed} pasó · {stats.failed} falló · {stats.blocked} bloqueado · {stats.skipped} omitido · {stats.pending} pendiente
         </p>

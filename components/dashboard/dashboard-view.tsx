@@ -105,14 +105,18 @@ export function DashboardView() {
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Casos" value={String(snapshot.assigned)} hint={sprintId === "todos" ? "En el proyecto" : "Ligados al sprint"} />
         <Stat
-          label="Con resultado"
-          value={`${snapshot.withResult}/${snapshot.assigned}`}
-          hint="Último resultado distinto de pendiente"
+          label="Avance"
+          value={
+            snapshot.assigned === 0
+              ? "—"
+              : `${Math.round((snapshot.withResult / snapshot.assigned) * 100)}%`
+          }
+          hint={`${snapshot.withResult} de ${snapshot.assigned} con resultado`}
         />
         <Stat
           label="Aprobación"
           value={snapshot.passRate === null ? "—" : `${snapshot.passRate}%`}
-          hint="Pasó entre los que pasaron o fallaron"
+          hint="Sobre casos ejecutados, sin bloqueados ni omitidos"
         />
         <Stat label="Corridas" value={String(runs.length)} hint="Del recorte actual" />
       </div>

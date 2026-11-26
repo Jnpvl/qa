@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useState, type ReactNode } from "react"
+import { toast } from "sonner"
 import {
   Bug,
   CircleHelp,
@@ -49,8 +50,11 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
+import { backupReminder, markBackup, readBackupMeta } from "@/lib/backup"
+import { downloadText } from "@/lib/csv"
 import { product } from "@/lib/product"
 import { useStore } from "@/lib/store"
+import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 
 const nav = [
@@ -73,6 +77,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </>
     )
   }
+  if (!store.data.initialized) return <Welcome onEmpty={() => store.startEmpty()} onDemo={() => store.loadDemo()} />
   return <ShellFrame>{children}</ShellFrame>
 }
 
@@ -87,6 +92,33 @@ function ShellFrame({ children }: { children: ReactNode }) {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const [resetOpen, setResetOpen] = useState(false)
+  const [phrase, setPhrase] = useState("")
+  const [quota, setQuota] = useState<string | null>(null)
+  const [, setBackupTick] = useState(0)
+  const backupMeta = readBackupMeta()
+  const realData = data?.projects.some((item) => !item.sample) ?? false
+  const reminder = backupReminder(backupMeta)
+
+  useEffect(() => {
+    function onQuota(event: Event) {
+      setQuota((event as CustomEvent<string>).detail)
+    }
+    window.addEventListener("casos-quota", onQuota)
+    return () => window.removeEventListener("casos-quota", onQuota)
+  }, [])
+
+  function backup() {
+    if (!data) return
+    downloadText(
+      `casos-respaldo-${new Date().toISOString().slice(0, 10)}.json`,
+      JSON.stringify(data, null, 2),
+      "application/json",
+    )
+    markBackup()
+    setBackupTick((value) => value + 1)
+    setQuota(null)
+    toast.success("Respaldo descargado")
+  }
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -208,6 +240,10 @@ function ShellFrame({ children }: { children: ReactNode }) {
             <span className="text-sm font-medium">{product.name}</span>
           )}
           <div className="ml-auto flex items-center gap-1">
+            <Button variant="outline" size="sm" className="shrink-0" onClick={backup}>
+              <span className="hidden sm:inline">Respaldo</span>
+              <span className="sm:hidden">Copia</span>
+            </Button>
             <Button variant="outline" size="sm" className="shrink-0" onClick={() => setPaletteOpen(true)}>
               <Search />
               <span className="hidden sm:inline">Buscar</span>
@@ -225,6 +261,20 @@ function ShellFrame({ children }: { children: ReactNode }) {
             </Button>
           </div>
         </header>
+        {quota ? (
+          <p className="border-b bg-destructive/10 px-3 py-2 text-sm text-destructive">{quota}</p>
+        ) : reminder ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-amber-50 px-3 py-2 text-sm text-amber-950">
+            <span>{reminder} Los datos viven solo en este navegador.</span>
+            <Button size="sm" variant="outline" onClick={backup}>
+              Descargar respaldo
+            </Button>
+          </div>
+        ) : (
+          <p className="border-b px-3 py-1 text-[11px] text-muted-foreground print:hidden">
+            Los datos de este espacio viven en este navegador.
+          </p>
+        )}
         <main className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">{children}</main>
       </div>
 
@@ -264,20 +314,39 @@ function ShellFrame({ children }: { children: ReactNode }) {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={resetOpen} onOpenChange={setResetOpen}>
+      <AlertDialog
+        open={resetOpen}
+        onOpenChange={(open) => {
+          setResetOpen(open)
+          if (!open) setPhrase("")
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>¿Restablecer la demo?</AlertDialogTitle>
             <AlertDialogDescription>
-              Se borran los proyectos, casos y corridas que cambiaste en este navegador. Vuelve la tienda de ejemplo.
+              {realData
+                ? "Hay proyectos que no son el ejemplo. Esto los reemplaza todos por la tienda de demostración. Escribe BORRAR para continuar."
+                : "Se reemplaza lo que hay en este navegador por la tienda de ejemplo."}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {realData ? (
+            <Input
+              aria-label="Escribe BORRAR para confirmar"
+              value={phrase}
+              onChange={(event) => setPhrase(event.target.value)}
+              placeholder="BORRAR"
+            />
+          ) : null}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
+              disabled={realData && phrase !== "BORRAR"}
               onClick={() => {
+                if (realData && phrase !== "BORRAR") return
                 store.reset()
                 setResetOpen(false)
+                setPhrase("")
                 router.push("/")
               }}
             >
@@ -286,6 +355,26 @@ function ShellFrame({ children }: { children: ReactNode }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  )
+}
+
+function Welcome({ onEmpty, onDemo }: { onEmpty: () => void; onDemo: () => void }) {
+  return (
+    <div className="mx-auto grid min-h-dvh w-full max-w-lg content-center gap-6 p-6">
+      <div>
+        <p className="text-sm text-muted-foreground">{product.name}</p>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">¿Cómo quieres empezar?</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Todo se guarda en este navegador. Puedes descargar un respaldo cuando quieras.
+        </p>
+      </div>
+      <div className="grid gap-3">
+        <Button onClick={onEmpty}>Empezar vacío</Button>
+        <Button variant="outline" onClick={onDemo}>
+          Cargar demo
+        </Button>
+      </div>
     </div>
   )
 }

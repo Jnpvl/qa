@@ -24,6 +24,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { formatBytes, readAttachment } from "@/lib/attachments"
+import { FilePicker } from "@/components/file-picker"
 import { defectStatusLabel, priorities, priorityLabel, resultLabel, severities, severityLabel } from "@/lib/labels"
 import { runStats } from "@/lib/metrics"
 import { product } from "@/lib/product"
@@ -71,6 +72,16 @@ function pendingCloseCopy(pending: number) {
   return `Quedan ${pending} casos sin resultado. Puedes reabrirla después.`
 }
 
+function statusFromSteps(stepIds: string[], results: { stepId: string; status: string }[]) {
+  if (stepIds.length === 0) return null
+  const byId = new Map(results.map((item) => [item.stepId, item.status]))
+  const statuses = stepIds.map((id) => byId.get(id) ?? "pendiente")
+  if (statuses.some((status) => status === "failed")) return "failed" as const
+  if (statuses.some((status) => status === "blocked")) return "blocked" as const
+  if (statuses.every((status) => status === "passed")) return "passed" as const
+  return null
+}
+
 function nextPendingId(
   ordered: TestCase[],
   results: { caseId: string; status: ResultStatus }[],
@@ -100,6 +111,10 @@ export function RunPlayer() {
   const [assigneeFilter, setAssigneeFilter] = useState("todos")
   const [priorityFilter, setPriorityFilter] = useState<Priority | "todas">("todas")
   const [defectOpen, setDefectOpen] = useState(false)
+  const [confirmDefect, setConfirmDefect] = useState(false)
+  const [rerunOpen, setRerunOpen] = useState(false)
+  const [rerunEnv, setRerunEnv] = useState("")
+  const [rerunBuild, setRerunBuild] = useState("")
   const run = data?.runs.find((item) => item.id === runId && item.projectId === project?.id)
   const allOrdered = run
     ? run.results
@@ -277,29 +292,13 @@ export function RunPlayer() {
             <Button asChild variant="outline">
               <Link href={`/proyectos/${project.id}/corridas/${run.id}/reporte`}>Reporte</Link>
             </Button>
-            {!closed ? (
+            {run.results.some((item) => item.status === "failed" || item.status === "blocked") ? (
               <Button
                 variant="outline"
                 onClick={() => {
-                  const ids = run.results
-                    .filter((item) => item.status === "failed" || item.status === "blocked")
-                    .map((item) => item.caseId)
-                  try {
-                    const created = store.createRun({
-                      projectId: project.id,
-                      name: `Reejecución: ${run.name}`,
-                      sprintId: run.sprintId,
-                      planId: run.planId,
-                      caseIds: ids,
-                      assigneeId: run.assigneeId,
-                      environment: run.environment,
-                      build: run.build,
-                    })
-                    toast.success("Corrida creada con fallidos y bloqueados")
-                    router.push(`/proyectos/${project.id}/corridas/${created.id}`)
-                  } catch (error) {
-                    reportError(error)
-                  }
+                  setRerunEnv(run.environment)
+                  setRerunBuild(run.build)
+                  setRerunOpen(true)
                 }}
               >
                 Reejecutar fallidos
@@ -519,7 +518,14 @@ export function RunPlayer() {
                                     : (activeResult.stepResults.find((entry) => entry.stepId === item.id)?.status ??
                                       "pendiente"),
                               }))
-                              store.setRunResult(run.id, active.id, { stepResults })
+                              const derived = statusFromSteps(
+                                active.steps.map((item) => item.id),
+                                stepResults,
+                              )
+                              store.setRunResult(run.id, active.id, {
+                                stepResults,
+                                ...(derived ? { status: derived } : {}),
+                              })
                             }}
                           >
                             {status === "passed" ? "Pasó" : status === "failed" ? "Falló" : "Bloqueado"}
@@ -579,14 +585,10 @@ export function RunPlayer() {
                   ) : null}
                 </div>
               ) : (
-                <Input
-                  type="file"
+                <FilePicker
+                  label="Adjuntar archivo"
                   disabled={closed}
-                  aria-label="Adjuntar archivo al resultado"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0]
-                    event.target.value = ""
-                    if (!file) return
+                  onFile={(file) => {
                     readAttachment(file)
                       .then((attachment) => store.setRunResult(run.id, active.id, { attachment }))
                       .catch(reportError)
@@ -596,9 +598,12 @@ export function RunPlayer() {
               <p className="text-xs text-muted-foreground">Hasta 350 KB. Se guarda en este navegador.</p>
             </div>
             {activeResult.status === "failed" ? (
-              <Button type="button" variant="outline" className="justify-self-start" onClick={() => setDefectOpen(true)}>
-                Registrar defecto
-              </Button>
+              <DefectLinks
+                defects={data.defects.filter((item) => item.caseId === active.id && item.runId === run.id)}
+                projectId={project.id}
+                onCreate={() => setDefectOpen(true)}
+                onConfirm={() => setConfirmDefect(true)}
+              />
             ) : null}
             <div className="grid gap-1.5">
               <label htmlFor="run-comment" className="text-sm font-medium">
@@ -652,6 +657,73 @@ export function RunPlayer() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <AlertDialog open={rerunOpen} onOpenChange={setRerunOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reejecutar fallidos y bloqueados</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se crea una corrida nueva con esos casos. Puedes ajustar el entorno y la versión antes de crearla.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="grid gap-3">
+            <FormLike label="Entorno">
+              <Input aria-label="Entorno de la nueva corrida" value={rerunEnv} onChange={(event) => setRerunEnv(event.target.value)} />
+            </FormLike>
+            <FormLike label="Build o versión">
+              <Input aria-label="Versión de la nueva corrida" value={rerunBuild} onChange={(event) => setRerunBuild(event.target.value)} />
+            </FormLike>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const ids = run.results
+                  .filter((item) => item.status === "failed" || item.status === "blocked")
+                  .map((item) => item.caseId)
+                try {
+                  const created = store.createRun({
+                    projectId: project.id,
+                    name: `Reejecución: ${run.name}`,
+                    sprintId: run.sprintId,
+                    planId: run.planId,
+                    caseIds: ids,
+                    assigneeId: run.assigneeId,
+                    environment: rerunEnv,
+                    build: rerunBuild,
+                  })
+                  toast.success("Corrida creada con fallidos y bloqueados")
+                  router.push(`/proyectos/${project.id}/corridas/${created.id}`)
+                } catch (error) {
+                  reportError(error)
+                }
+              }}
+            >
+              Crear corrida
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={confirmDefect} onOpenChange={setConfirmDefect}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Registrar otro defecto?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Este resultado ya tiene un defecto ligado. El nuevo queda junto al anterior.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmDefect(false)
+                setDefectOpen(true)
+              }}
+            >
+              Registrar otro
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <DefectDialog
         open={defectOpen}
         title={active ? `Fallo en ${active.title}` : ""}
@@ -668,6 +740,45 @@ export function RunPlayer() {
           setDefectOpen(false)
         }}
       />
+    </div>
+  )
+}
+
+function DefectLinks({
+  defects,
+  projectId,
+  onCreate,
+  onConfirm,
+}: {
+  defects: { id: string; title: string; externalUrl: string }[]
+  projectId: string
+  onCreate: () => void
+  onConfirm: () => void
+}) {
+  if (defects.length === 0) {
+    return (
+      <Button type="button" variant="outline" className="justify-self-start" onClick={onCreate}>
+        Registrar defecto
+      </Button>
+    )
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {defects.map((defect) => (
+        <Link
+          key={defect.id}
+          href={defect.externalUrl || `/proyectos/${projectId}/defectos`}
+          className="inline-flex max-w-full items-center rounded-full border bg-card px-2 py-1 text-xs underline-offset-2 hover:underline"
+        >
+          <span className="truncate">{defect.title}</span>
+        </Link>
+      ))}
+      <Button asChild type="button" variant="outline" size="sm">
+        <Link href={`/proyectos/${projectId}/defectos`}>Ver defecto</Link>
+      </Button>
+      <Button type="button" variant="ghost" size="sm" onClick={onConfirm}>
+        Registrar otro
+      </Button>
     </div>
   )
 }

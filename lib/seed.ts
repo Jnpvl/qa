@@ -73,6 +73,7 @@ function result(
 function buildSeed(): DemoState {
   return {
     version: 2,
+    initialized: true,
     autoAdvance: true,
     members: [
       { id: "mem_ana", projectId: PROJECT, name: "Ana Ruiz", role: "QA" },
@@ -108,6 +109,7 @@ function buildSeed(): DemoState {
         id: PROJECT,
         key: "DEMO",
         name: "Tienda en línea demo",
+        sample: true,
         description:
           "Tienda de ejemplo para seguir el acceso, el catálogo, el carrito y el checkout. Los cambios se quedan en este navegador.",
         createdAt: "2026-10-06T15:00:00.000Z",

@@ -13,31 +13,37 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { FilePicker } from "@/components/file-picker"
 import { downloadText, parseCsv, toCsv } from "@/lib/csv"
+import {
+  importFields,
+  mapCsvHeaders,
+  parseExecution,
+  parsePriority,
+  parseSeverity,
+  parseStatus,
+  parseSteps,
+  type ImportField,
+} from "@/lib/case-import"
 import { useStore } from "@/lib/store"
 import { createId } from "@/lib/text"
 import { flattenSuites } from "@/lib/suites"
-import type { CaseDraft, CaseStatus, ExecutionType, Priority, Severity, TestCase } from "@/lib/types"
+import type { CaseDraft, TestCase } from "@/lib/types"
 
-const fields = [
-  { id: "title", label: "Título" },
-  { id: "suite", label: "Suite" },
-  { id: "preconditions", label: "Precondiciones" },
-  { id: "steps", label: "Pasos" },
-  { id: "priority", label: "Prioridad" },
-  { id: "severity", label: "Severidad" },
-  { id: "kind", label: "Tipo" },
-  { id: "status", label: "Estado" },
-  { id: "execution", label: "Ejecución" },
-  { id: "tags", label: "Etiquetas" },
-] as const
+const fieldLabels: Record<ImportField, string> = {
+  title: "Título",
+  suite: "Suite",
+  preconditions: "Precondiciones",
+  steps: "Pasos",
+  priority: "Prioridad",
+  severity: "Severidad",
+  kind: "Tipo",
+  status: "Estado",
+  execution: "Ejecución",
+  tags: "Etiquetas",
+}
 
-type FieldId = (typeof fields)[number]["id"] | "ignore"
-
-const priorityMap: Record<string, Priority> = { baja: "baja", media: "media", alta: "alta", critica: "critica", crítica: "critica" }
-const severityMap: Record<string, Severity> = { menor: "menor", mayor: "mayor", critica: "critica", crítica: "critica", bloqueante: "bloqueante" }
-const statusMap: Record<string, CaseStatus> = { borrador: "borrador", activo: "activo", listo: "activo", obsoleto: "obsoleto" }
-const executionMap: Record<string, ExecutionType> = { manual: "manual", automatizado: "automatizado", ambos: "ambos" }
+type FieldId = ImportField | "ignore"
 
 export function exportCases(cases: TestCase[], suites: { id: string; name: string }[], filename: string) {
   const rows = [
@@ -80,13 +86,7 @@ export function CaseImportDialog({
       .then((text) => {
         const parsed = parseCsv(text)
         setRows(parsed)
-        const next: Record<string, FieldId> = {}
-        parsed[0]?.forEach((header, index) => {
-          const key = header.trim().toLowerCase()
-          const match = fields.find((field) => key.includes(field.id) || key.includes(field.label.toLowerCase()))
-          next[String(index)] = match?.id ?? "ignore"
-        })
-        setMapping(next)
+        setMapping(mapCsvHeaders(parsed[0] ?? []))
       })
       .catch(reportError)
   }
@@ -120,25 +120,21 @@ export function CaseImportDialog({
           suiteId = suite.id
           projectSuites.push(suite)
         }
-        const steps = (column("steps") >= 0 ? row[column("steps")] : "")
-          .split("|")
-          .map((part) => part.trim())
-          .filter(Boolean)
-          .map((part) => {
-            const [action, expected = ""] = part.split("=>")
-            return { id: createId("st"), action: action.trim(), expected: expected.trim() }
-          })
+        const kindValue = (column("kind") >= 0 ? row[column("kind")] : "").trim().toLowerCase()
         const draft: CaseDraft = {
           suiteId: suiteId ?? fallback.id,
           title,
           preconditions: column("preconditions") >= 0 ? row[column("preconditions")] ?? "" : "",
-          steps,
-          priority: priorityMap[(column("priority") >= 0 ? row[column("priority")] : "").trim().toLowerCase()] ?? "media",
-          severity: severityMap[(column("severity") >= 0 ? row[column("severity")] : "").trim().toLowerCase()] ?? "mayor",
-          kind: (column("kind") >= 0 ? row[column("kind")] : "").trim().toLowerCase() === "regresion" ? "regresion" : "funcional",
-          executionType: executionMap[(column("execution") >= 0 ? row[column("execution")] : "").trim().toLowerCase()] ?? "manual",
+          steps: parseSteps(column("steps") >= 0 ? row[column("steps")] ?? "" : "").map((step) => ({
+            id: createId("st"),
+            ...step,
+          })),
+          priority: parsePriority(column("priority") >= 0 ? row[column("priority")] ?? "" : ""),
+          severity: parseSeverity(column("severity") >= 0 ? row[column("severity")] ?? "" : ""),
+          kind: kindValue === "regresion" || kindValue === "regresión" ? "regresion" : kindValue === "humo" ? "humo" : kindValue === "interfaz" ? "interfaz" : "funcional",
+          executionType: parseExecution(column("execution") >= 0 ? row[column("execution")] ?? "" : ""),
           tags: (column("tags") >= 0 ? row[column("tags")] : "").split(",").map((item) => item.trim()).filter(Boolean),
-          status: statusMap[(column("status") >= 0 ? row[column("status")] : "").trim().toLowerCase()] ?? "borrador",
+          status: parseStatus(column("status") >= 0 ? row[column("status")] ?? "" : ""),
           sprintIds: [],
         }
         store.createCase(projectId, draft)
@@ -164,16 +160,7 @@ export function CaseImportDialog({
           </DialogDescription>
         </DialogHeader>
         <FormField label="Archivo CSV">
-          <input
-            className="text-sm"
-            type="file"
-            accept=".csv,text/csv"
-            aria-label="Archivo CSV"
-            onChange={(event) => {
-              const file = event.target.files?.[0]
-              if (file) load(file)
-            }}
-          />
+          <FilePicker label="Elegir CSV" accept=".csv,text/csv" emptyLabel="Ningún CSV seleccionado" onFile={load} />
         </FormField>
         {headers.length > 0 ? (
           <div className="grid gap-3">
@@ -186,7 +173,7 @@ export function CaseImportDialog({
                   onChange={(value) => setMapping({ ...mapping, [String(index)]: value })}
                   options={[
                     { value: "ignore", label: "Ignorar" },
-                    ...fields.map((field) => ({ value: field.id, label: field.label })),
+                    ...importFields.map((field) => ({ value: field, label: fieldLabels[field] })),
                   ]}
                 />
               </div>
