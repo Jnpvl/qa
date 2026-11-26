@@ -43,7 +43,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
+import { CaseImportDialog, exportCases } from "@/components/cases/case-transfer"
 import { filterCases, sortCases, type CaseSortKey } from "@/lib/cases-query"
+import { downloadText } from "@/lib/csv"
 import {
   caseStatuses,
   caseStatusLabel,
@@ -102,14 +104,21 @@ export function CasesWorkspace() {
   const [bulkSprint, setBulkSprint] = useState("none")
   const [bulkTag, setBulkTag] = useState("")
   const [moveError, setMoveError] = useState("")
+  const [importOpen, setImportOpen] = useState(false)
   const shift = useRef(false)
 
   const filterKey = [query, priority, execution, status, sprintId, tag, suiteId, sort.key, sort.dir].join("|")
+  const selectionKey = [project?.id ?? "", suiteId, query, priority, execution, status, sprintId, tag].join("|")
   const [appliedFilter, setAppliedFilter] = useState(filterKey)
+  const [selectionScope, setSelectionScope] = useState(selectionKey)
   const filtersChanged = appliedFilter !== filterKey
   if (filtersChanged) {
     setAppliedFilter(filterKey)
     setPage(1)
+  }
+  if (selectionScope !== selectionKey) {
+    setSelectionScope(selectionKey)
+    setSelected(new Set())
   }
 
   const projectCases = useMemo(
@@ -292,6 +301,19 @@ export function CasesWorkspace() {
               <>
                 <Button variant="outline" className="lg:hidden" onClick={() => setTreeOpen(true)}>
                   Suites
+                </Button>
+                <Button variant="outline" onClick={() => exportCases(projectCases, suites, "casos.csv")} disabled={projectCases.length === 0}>
+                  CSV
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={projectCases.length === 0}
+                  onClick={() => downloadText("casos.json", JSON.stringify(projectCases, null, 2), "application/json")}
+                >
+                  JSON
+                </Button>
+                <Button variant="outline" onClick={() => setImportOpen(true)}>
+                  Importar
                 </Button>
                 <Button
                   onClick={() => router.push(`/proyectos/${project.id}/casos/nuevo`)}
@@ -735,6 +757,8 @@ export function CasesWorkspace() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <CaseImportDialog open={importOpen} projectId={project.id} onOpenChange={setImportOpen} />
 
       <AlertDialog open={bulk === "delete"} onOpenChange={(open) => !open && setBulk(null)}>
         <AlertDialogContent>

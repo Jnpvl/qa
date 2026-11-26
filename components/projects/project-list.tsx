@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { MoreHorizontal, Plus } from "lucide-react"
+import { toast } from "sonner"
 import { EmptyState, PageHeader, reportError } from "@/components/bits"
 import { ProjectFormDialog } from "@/components/projects/project-form"
 import {
@@ -25,6 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { useStore } from "@/lib/store"
+import { downloadText } from "@/lib/csv"
 import { countLabel, normalize } from "@/lib/text"
 import type { Project } from "@/lib/types"
 
@@ -54,10 +56,41 @@ export function ProjectList() {
         title="Proyectos"
         description="Elige un proyecto para ver sus suites, casos y corridas."
         actions={
-          <Button onClick={() => setCreating(true)}>
-            <Plus />
-            Nuevo proyecto
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={() => downloadText("casos-respaldo.json", JSON.stringify(data, null, 2), "application/json")}
+            >
+              Respaldar
+            </Button>
+            <label className="inline-flex">
+              <input
+                className="sr-only"
+                type="file"
+                accept="application/json,.json"
+                aria-label="Restaurar respaldo"
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  event.target.value = ""
+                  if (!file) return
+                  file
+                    .text()
+                    .then((text) => {
+                      store.replaceState(JSON.parse(text))
+                      toast.success("Respaldo restaurado")
+                    })
+                    .catch(reportError)
+                }}
+              />
+              <span className="inline-flex h-8 cursor-pointer items-center rounded-lg border px-2.5 text-sm">
+                Restaurar
+              </span>
+            </label>
+            <Button onClick={() => setCreating(true)}>
+              <Plus />
+              Nuevo proyecto
+            </Button>
+          </div>
         }
       />
       <Input

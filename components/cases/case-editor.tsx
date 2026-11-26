@@ -36,7 +36,10 @@ import {
   severityLabel,
 } from "@/lib/labels"
 import { flattenSuites } from "@/lib/suites"
+import { formatBytes, readAttachment } from "@/lib/attachments"
 import { caseCode, createId, formatDateTime, normalize } from "@/lib/text"
+import { defectStatusLabel } from "@/lib/labels"
+import { ResultBadge } from "@/components/status-pills"
 import { useRouteParam, useWorkspace } from "@/components/use-workspace"
 import { product } from "@/lib/product"
 import type { CaseDraft, TestCase } from "@/lib/types"
@@ -520,6 +523,116 @@ export function CaseEditor() {
           ))
         )}
       </div>
+
+      <div className="grid gap-2">
+        <h2 className="text-sm font-medium">Adjuntos</h2>
+        <p className="text-xs text-muted-foreground">Imagen o archivo de hasta 350 KB. Se guarda en este navegador.</p>
+        {testCase ? (
+          <>
+            {testCase.attachments.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Este caso no tiene adjuntos.</p>
+            ) : (
+              <ul className="grid gap-2">
+                {testCase.attachments.map((file) => (
+                  <li key={file.id} className="flex flex-wrap items-center gap-2 text-sm">
+                    <a className="break-all underline-offset-2 hover:underline" href={file.dataUrl} download={file.name}>
+                      {file.name}
+                    </a>
+                    <span className="text-xs text-muted-foreground">{formatBytes(file.size)}</span>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => store.removeCaseAttachment(testCase.id, file.id)}>
+                      Quitar
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <Input
+              type="file"
+              aria-label="Adjuntar archivo al caso"
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                event.target.value = ""
+                if (!file) return
+                readAttachment(file)
+                  .then((attachment) => store.addCaseAttachment(testCase.id, attachment))
+                  .catch(reportError)
+              }}
+            />
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">Guarda el caso para poder adjuntar archivos.</p>
+        )}
+      </div>
+
+      {testCase ? (
+        <div className="grid gap-4">
+          <section className="grid gap-2">
+            <h2 className="text-sm font-medium">Historial de cambios</h2>
+            {testCase.changes.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Todavía no hay cambios registrados.</p>
+            ) : (
+              <ul className="grid gap-2">
+                {[...testCase.changes].reverse().map((change) => (
+                  <li key={change.id} className="text-sm">
+                    <span className="text-muted-foreground">{formatDateTime(change.at)} · </span>
+                    {change.summary}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+          <section className="grid gap-2">
+            <h2 className="text-sm font-medium">Ejecuciones</h2>
+            {data.runs.filter((run) => run.results.some((result) => result.caseId === testCase.id)).length === 0 ? (
+              <p className="text-sm text-muted-foreground">Este caso todavía no entra en una corrida.</p>
+            ) : (
+              <ul className="grid gap-2">
+                {data.runs
+                  .filter((run) => run.projectId === project.id && run.results.some((result) => result.caseId === testCase.id))
+                  .map((run) => {
+                    const result = run.results.find((item) => item.caseId === testCase.id)
+                    const who = data.members.find((item) => item.id === (result?.assigneeId ?? run.assigneeId))
+                    if (!result) return null
+                    return (
+                      <li key={run.id} className="flex flex-wrap items-center gap-2 text-sm">
+                        <span className="text-muted-foreground">{formatDateTime(run.createdAt)}</span>
+                        <Link href={`/proyectos/${project.id}/corridas/${run.id}`} className="underline-offset-2 hover:underline">
+                          {run.name}
+                        </Link>
+                        <ResultBadge status={result.status} />
+                        <span className="text-muted-foreground">{who ? who.name : "Sin responsable"}</span>
+                      </li>
+                    )
+                  })}
+              </ul>
+            )}
+          </section>
+          <section className="grid gap-2">
+            <h2 className="text-sm font-medium">Defectos</h2>
+            {data.defects.filter((item) => item.caseId === testCase.id).length === 0 ? (
+              <p className="text-sm text-muted-foreground">No hay defectos ligados a este caso.</p>
+            ) : (
+              <ul className="grid gap-2">
+                {data.defects
+                  .filter((item) => item.caseId === testCase.id)
+                  .map((defect) => (
+                    <li key={defect.id} className="text-sm">
+                      {defect.title} · {defectStatusLabel[defect.status]}
+                      {defect.externalUrl ? (
+                        <>
+                          {" · "}
+                          <a className="underline-offset-2 hover:underline" href={defect.externalUrl} target="_blank" rel="noreferrer">
+                            Enlace
+                          </a>
+                        </>
+                      ) : null}
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      ) : null}
 
       <div className="sticky bottom-0 -mx-4 flex items-center justify-between gap-3 border-t bg-background/95 px-4 py-3 backdrop-blur md:-mx-6 md:px-6">
         <p className="text-xs text-muted-foreground">

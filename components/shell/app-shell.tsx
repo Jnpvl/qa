@@ -4,6 +4,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useState, type ReactNode } from "react"
 import {
+  Bug,
   CircleHelp,
   Flag,
   LayoutDashboard,
@@ -13,6 +14,7 @@ import {
   Play,
   RotateCcw,
   Search,
+  Users,
 } from "lucide-react"
 import { AppSkeleton, Kbd } from "@/components/bits"
 import { GlossaryContent } from "@/components/glossary-content"
@@ -56,6 +58,8 @@ const nav = [
   { slug: "sprints", label: "Sprints", icon: Flag },
   { slug: "planes", label: "Planes", icon: Layers },
   { slug: "corridas", label: "Corridas", icon: Play },
+  { slug: "defectos", label: "Defectos", icon: Bug },
+  { slug: "equipo", label: "Equipo", icon: Users },
   { slug: "tablero", label: "Tablero", icon: LayoutDashboard },
 ] as const
 
@@ -146,7 +150,7 @@ function ShellFrame({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
-      <aside className="hidden w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex">
+      <aside className="hidden w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex print:hidden">
         <Link href="/" className="flex items-center gap-2 px-3 py-3">
           <Mark />
           <span className="font-semibold tracking-tight">{product.name}</span>
@@ -171,7 +175,7 @@ function ShellFrame({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-12 min-w-0 shrink-0 items-center gap-2 overflow-hidden border-b bg-card px-3">
+        <header className="flex h-12 min-w-0 shrink-0 items-center gap-2 overflow-hidden border-b bg-card px-3 print:hidden">
           <Button
             variant="ghost"
             size="icon"

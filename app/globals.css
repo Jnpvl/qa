@@ -131,3 +131,14 @@
     @apply font-sans;
   }
 }
+
+@media print {
+  aside,
+  header,
+  [data-sonner-toaster] {
+    display: none !important;
+  }
+  main {
+    overflow: visible !important;
+  }
+}

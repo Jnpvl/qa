@@ -1,10 +1,11 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { PageHeader, reportError } from "@/components/bits"
+import { EnumSelect } from "@/components/enum-select"
 import { MissingProject } from "@/components/missing-project"
 import { ResultBadge } from "@/components/status-pills"
 import { Progress } from "@/components/ui/progress"
@@ -19,13 +20,17 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { formatBytes, readAttachment } from "@/lib/attachments"
+import { defectStatusLabel, priorities, priorityLabel, resultLabel, severities, severityLabel } from "@/lib/labels"
 import { runStats } from "@/lib/metrics"
 import { product } from "@/lib/product"
 import { caseCode } from "@/lib/text"
 import { useRouteParam, useWorkspace } from "@/components/use-workspace"
 import { cn } from "@/lib/utils"
-import type { ResultStatus, TestCase } from "@/lib/types"
+import type { Priority, ResultStatus, Severity, StepResultStatus, TestCase } from "@/lib/types"
 
 const choices: {
   status: Exclude<ResultStatus, "pendiente">
@@ -66,21 +71,51 @@ function pendingCloseCopy(pending: number) {
   return `Quedan ${pending} casos sin resultado. Puedes reabrirla después.`
 }
 
+function nextPendingId(
+  ordered: TestCase[],
+  results: { caseId: string; status: ResultStatus }[],
+  currentId: string,
+  justMarked: ResultStatus,
+) {
+  const index = ordered.findIndex((item) => item.id === currentId)
+  if (index < 0) return null
+  for (let step = 1; step < ordered.length; step += 1) {
+    const item = ordered[(index + step) % ordered.length]
+    const status = item.id === currentId ? justMarked : results.find((result) => result.caseId === item.id)?.status
+    if (status === "pendiente") return item.id
+  }
+  return null
+}
+
 export function RunPlayer() {
   const router = useRouter()
   const runId = useRouteParam("runId") ?? ""
   const { store, data, project } = useWorkspace()
-  const run = data?.runs.find((item) => item.id === runId && item.projectId === project?.id)
-  const ordered = run
-    ? run.results
-        .map((result) => data?.cases.find((item) => item.id === result.caseId))
-        .filter((item): item is TestCase => Boolean(item))
-    : []
   const [activeId, setActiveId] = useState<string | null>(null)
   const [showList, setShowList] = useState(false)
   const [comment, setComment] = useState("")
   const [commentFor, setCommentFor] = useState<string | null>(null)
   const [closeOpen, setCloseOpen] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<ResultStatus | "todos">("todos")
+  const [assigneeFilter, setAssigneeFilter] = useState("todos")
+  const [priorityFilter, setPriorityFilter] = useState<Priority | "todas">("todas")
+  const [defectOpen, setDefectOpen] = useState(false)
+  const run = data?.runs.find((item) => item.id === runId && item.projectId === project?.id)
+  const allOrdered = run
+    ? run.results
+        .map((result) => data?.cases.find((item) => item.id === result.caseId))
+        .filter((item): item is TestCase => Boolean(item))
+    : []
+  const ordered = allOrdered.filter((item) => {
+    const result = run?.results.find((entry) => entry.caseId === item.id)
+    if (statusFilter !== "todos" && result?.status !== statusFilter) return false
+    if (assigneeFilter === "ninguno" && result?.assigneeId) return false
+    if (assigneeFilter !== "todos" && assigneeFilter !== "ninguno" && result?.assigneeId !== assigneeFilter) {
+      return false
+    }
+    if (priorityFilter !== "todas" && item.priority !== priorityFilter) return false
+    return true
+  })
   const fallbackId =
     ordered.find(
       (item) =>
@@ -114,6 +149,7 @@ export function RunPlayer() {
     run,
     closed: false,
     comment: "",
+    autoAdvance: true,
   })
 
   useEffect(() => {
@@ -123,6 +159,7 @@ export function RunPlayer() {
       run,
       closed: run?.status === "cerrada",
       comment,
+      autoAdvance: data?.autoAdvance !== false,
     }
   })
 
@@ -176,12 +213,10 @@ export function RunPlayer() {
         status,
         comment: current.comment,
       })
-      if (!ok) return
-      const pending = current.run.results.find(
-        (item) => item.caseId !== current.active?.id && item.status === "pendiente",
-      )
-      if (pending) setActiveId(pending.caseId)
       setShowList(false)
+      if (!ok || !current.autoAdvance || !current.active) return
+      const next = nextPendingId(current.ordered, current.run.results, current.active.id, status)
+      if (next) setActiveId(next)
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
@@ -214,6 +249,10 @@ export function RunPlayer() {
     if (!run || !active || closed) return
     try {
       store.setRunResult(run.id, active.id, { status, comment })
+      if (data?.autoAdvance !== false) {
+        const next = nextPendingId(ordered, run.results, active.id, status)
+        if (next) setActiveId(next)
+      }
     } catch (error) {
       reportError(error)
     }
@@ -235,6 +274,37 @@ export function RunPlayer() {
             <Button variant="outline" onClick={() => router.push(`/proyectos/${project.id}/corridas`)}>
               Volver
             </Button>
+            <Button asChild variant="outline">
+              <Link href={`/proyectos/${project.id}/corridas/${run.id}/reporte`}>Reporte</Link>
+            </Button>
+            {!closed ? (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const ids = run.results
+                    .filter((item) => item.status === "failed" || item.status === "blocked")
+                    .map((item) => item.caseId)
+                  try {
+                    const created = store.createRun({
+                      projectId: project.id,
+                      name: `Reejecución: ${run.name}`,
+                      sprintId: run.sprintId,
+                      planId: run.planId,
+                      caseIds: ids,
+                      assigneeId: run.assigneeId,
+                      environment: run.environment,
+                      build: run.build,
+                    })
+                    toast.success("Corrida creada con fallidos y bloqueados")
+                    router.push(`/proyectos/${project.id}/corridas/${created.id}`)
+                  } catch (error) {
+                    reportError(error)
+                  }
+                }}
+              >
+                Reejecutar fallidos
+              </Button>
+            ) : null}
             {closed ? (
               <Button
                 variant="outline"
@@ -261,6 +331,77 @@ export function RunPlayer() {
           </span>
         </div>
         <Progress className="mt-3 h-2" value={stats.percent} aria-label="Avance de la corrida" />
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <FormLike label="Responsable">
+            <EnumSelect
+              ariaLabel="Responsable de la corrida"
+              value={run.assigneeId ?? "ninguno"}
+              onChange={(value) => store.updateRunMeta(run.id, { assigneeId: value === "ninguno" ? null : value })}
+              options={memberOptions(data.members.filter((item) => item.projectId === project.id))}
+            />
+          </FormLike>
+          <FormLike label="Entorno">
+            <Input
+              value={run.environment}
+              aria-label="Entorno"
+              placeholder="Staging"
+              onChange={(event) => store.updateRunMeta(run.id, { environment: event.target.value })}
+            />
+          </FormLike>
+          <FormLike label="Build o versión">
+            <Input
+              value={run.build}
+              aria-label="Build o versión"
+              placeholder="2026.11.24"
+              onChange={(event) => store.updateRunMeta(run.id, { build: event.target.value })}
+            />
+          </FormLike>
+        </div>
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <div className="w-full min-w-0 sm:w-40">
+            <EnumSelect
+              size="sm"
+              ariaLabel="Filtrar por resultado"
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={[
+                { value: "todos", label: "Resultado" },
+                ...(["pendiente", "passed", "failed", "blocked", "skipped"] as ResultStatus[]).map((item) => ({
+                  value: item,
+                  label: resultLabel[item],
+                })),
+              ]}
+            />
+          </div>
+          <div className="w-full min-w-0 sm:w-44">
+            <EnumSelect
+              size="sm"
+              ariaLabel="Filtrar por responsable"
+              value={assigneeFilter}
+              onChange={setAssigneeFilter}
+              options={memberOptions(data.members.filter((item) => item.projectId === project.id), "Responsable")}
+            />
+          </div>
+          <div className="w-full min-w-0 sm:w-36">
+            <EnumSelect
+              size="sm"
+              ariaLabel="Filtrar por prioridad"
+              value={priorityFilter}
+              onChange={setPriorityFilter}
+              options={[
+                { value: "todas", label: "Prioridad" },
+                ...priorities.map((item) => ({ value: item, label: priorityLabel[item] })),
+              ]}
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox
+              checked={data.autoAdvance}
+              onCheckedChange={(value) => store.setAutoAdvance(value === true)}
+            />
+            Avanzar automáticamente
+          </label>
+        </div>
         {!closed && stats.pending === 0 && stats.total > 0 ? (
           <p className="mt-2 text-sm text-emerald-800">Todos los casos tienen resultado. Ya puedes cerrar la corrida.</p>
         ) : null}
@@ -350,6 +491,115 @@ export function RunPlayer() {
                 </button>
               ))}
             </div>
+            {active.steps.length > 0 ? (
+              <div className="grid gap-2">
+                <p className="text-sm font-medium">Resultado por paso</p>
+                {active.steps.map((step, index) => {
+                  const current = activeResult.stepResults.find((item) => item.stepId === step.id)?.status ?? "pendiente"
+                  return (
+                    <div key={step.id} className="grid gap-2 rounded-lg border p-3">
+                      <p className="text-sm">
+                        <span className="text-muted-foreground">Paso {index + 1}. </span>
+                        {step.action}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {(["passed", "failed", "blocked"] as StepResultStatus[]).map((status) => (
+                          <Button
+                            key={status}
+                            type="button"
+                            size="sm"
+                            variant={current === status ? "default" : "outline"}
+                            disabled={closed}
+                            onClick={() => {
+                              const stepResults = active.steps.map((item) => ({
+                                stepId: item.id,
+                                status:
+                                  item.id === step.id
+                                    ? status
+                                    : (activeResult.stepResults.find((entry) => entry.stepId === item.id)?.status ??
+                                      "pendiente"),
+                              }))
+                              store.setRunResult(run.id, active.id, { stepResults })
+                            }}
+                          >
+                            {status === "passed" ? "Pasó" : status === "failed" ? "Falló" : "Bloqueado"}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : null}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <FormLike label="Responsable del caso">
+                <EnumSelect
+                  ariaLabel="Responsable del caso"
+                  value={activeResult.assigneeId ?? "ninguno"}
+                  onChange={(value) =>
+                    store.setRunResult(run.id, active.id, { assigneeId: value === "ninguno" ? null : value })
+                  }
+                  options={memberOptions(data.members.filter((item) => item.projectId === project.id))}
+                />
+              </FormLike>
+              <FormLike label="Minutos">
+                <Input
+                  type="number"
+                  min={0}
+                  inputMode="numeric"
+                  aria-label="Minutos empleados"
+                  disabled={closed}
+                  value={activeResult.minutes ?? ""}
+                  onChange={(event) => {
+                    const raw = event.target.value
+                    store.setRunResult(run.id, active.id, {
+                      minutes: raw === "" ? null : Math.max(0, Number(raw) || 0),
+                    })
+                  }}
+                />
+              </FormLike>
+            </div>
+            <div className="grid gap-2">
+              <p className="text-sm font-medium">Adjunto del resultado</p>
+              {activeResult.attachment ? (
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <a className="underline-offset-2 hover:underline" href={activeResult.attachment.dataUrl} download={activeResult.attachment.name}>
+                    {activeResult.attachment.name}
+                  </a>
+                  <span className="text-xs text-muted-foreground">{formatBytes(activeResult.attachment.size)}</span>
+                  {!closed ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => store.setRunResult(run.id, active.id, { attachment: null })}
+                    >
+                      Quitar
+                    </Button>
+                  ) : null}
+                </div>
+              ) : (
+                <Input
+                  type="file"
+                  disabled={closed}
+                  aria-label="Adjuntar archivo al resultado"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    event.target.value = ""
+                    if (!file) return
+                    readAttachment(file)
+                      .then((attachment) => store.setRunResult(run.id, active.id, { attachment }))
+                      .catch(reportError)
+                  }}
+                />
+              )}
+              <p className="text-xs text-muted-foreground">Hasta 350 KB. Se guarda en este navegador.</p>
+            </div>
+            {activeResult.status === "failed" ? (
+              <Button type="button" variant="outline" className="justify-self-start" onClick={() => setDefectOpen(true)}>
+                Registrar defecto
+              </Button>
+            ) : null}
             <div className="grid gap-1.5">
               <label htmlFor="run-comment" className="text-sm font-medium">
                 Comentario
@@ -402,6 +652,108 @@ export function RunPlayer() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <DefectDialog
+        open={defectOpen}
+        title={active ? `Fallo en ${active.title}` : ""}
+        severity={active?.severity ?? "mayor"}
+        onOpenChange={setDefectOpen}
+        onCreate={(input) => {
+          store.createDefect({
+            projectId: project.id,
+            caseId: active!.id,
+            runId: run.id,
+            ...input,
+          })
+          toast.success("Defecto registrado")
+          setDefectOpen(false)
+        }}
+      />
     </div>
+  )
+}
+
+function memberOptions(members: { id: string; name: string; role: string }[], allLabel = "Sin responsable") {
+  return [
+    { value: "ninguno", label: allLabel },
+    ...members.map((item) => ({ value: item.id, label: item.role ? `${item.name} · ${item.role}` : item.name })),
+  ]
+}
+
+function FormLike({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="grid min-w-0 gap-1.5">
+      <span className="text-sm font-medium">{label}</span>
+      {children}
+    </div>
+  )
+}
+
+function DefectDialog({
+  open,
+  title,
+  severity,
+  onOpenChange,
+  onCreate,
+}: {
+  open: boolean
+  title: string
+  severity: Severity
+  onOpenChange: (open: boolean) => void
+  onCreate: (input: { title: string; severity: Severity; externalUrl: string }) => void
+}) {
+  const [value, setValue] = useState(title)
+  const [level, setLevel] = useState(severity)
+  const [url, setUrl] = useState("")
+  const [seen, setSeen] = useState(false)
+  if (open && !seen) {
+    setSeen(true)
+    setValue(title)
+    setLevel(severity)
+    setUrl("")
+  }
+  if (!open && seen) setSeen(false)
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Registrar defecto</AlertDialogTitle>
+          <AlertDialogDescription>
+            Queda ligado a este caso y a esta corrida. El enlace externo es opcional.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <div className="grid gap-3">
+          <Input aria-label="Título del defecto" value={value} onChange={(event) => setValue(event.target.value)} />
+          <EnumSelect
+            ariaLabel="Severidad del defecto"
+            value={level}
+            onChange={setLevel}
+            options={severities.map((item) => ({ value: item, label: severityLabel[item] }))}
+          />
+          <Input
+            aria-label="Enlace externo"
+            placeholder="https://github.com/... o Jira"
+            value={url}
+            onChange={(event) => setUrl(event.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">Estado inicial: {defectStatusLabel.abierto}.</p>
+        </div>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={(event) => {
+              event.preventDefault()
+              try {
+                if (!value.trim()) throw new Error("Escribe el título del defecto.")
+                onCreate({ title: value, severity: level, externalUrl: url })
+              } catch (error) {
+                reportError(error)
+              }
+            }}
+          >
+            Crear
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }

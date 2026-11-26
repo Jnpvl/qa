@@ -94,6 +94,22 @@ export function CommandPalette({
               Tablero
             </CommandItem>
           ) : null}
+          {project ? (
+            <CommandItem
+              value="defectos"
+              onSelect={() => go(`/proyectos/${project.id}/defectos`)}
+            >
+              Defectos
+            </CommandItem>
+          ) : null}
+          {project ? (
+            <CommandItem
+              value="equipo miembros"
+              onSelect={() => go(`/proyectos/${project.id}/equipo`)}
+            >
+              Equipo
+            </CommandItem>
+          ) : null}
         </CommandGroup>
         {project ? (
           <CommandGroup heading="Acciones">

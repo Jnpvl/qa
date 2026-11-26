@@ -7,6 +7,7 @@ import { MissingProject } from "@/components/missing-project"
 import { ResultBadge } from "@/components/status-pills"
 import { PageHeader, StackedBar } from "@/components/bits"
 import { coverageSnapshot, executionMix, failureBoard, runStats } from "@/lib/metrics"
+import { planCaseIds } from "@/lib/plan-cases"
 import { caseCode } from "@/lib/text"
 import { useWorkspace } from "@/components/use-workspace"
 
@@ -31,15 +32,29 @@ export function DashboardView() {
   )
   const initial = sprints.find((item) => item.status === "activo")?.id ?? sprints[0]?.id ?? "todos"
   const [sprintId, setSprintId] = useState(initial)
+  const [planId, setPlanId] = useState("todos")
+  const [assigneeId, setAssigneeId] = useState("todos")
 
   if (!data || !project) return <MissingProject />
 
+  const plans = data.plans.filter((item) => item.projectId === project.id)
+  const members = data.members.filter((item) => item.projectId === project.id)
+  const selectedPlan = plans.find((item) => item.id === planId)
+  const planIds = selectedPlan ? new Set(planCaseIds(selectedPlan, data.cases, data.suites)) : null
   const runs = data.runs
     .filter((item) => item.projectId === project.id)
     .filter((item) => sprintId === "todos" || item.sprintId === sprintId)
+    .filter((item) => planId === "todos" || item.planId === planId)
+    .filter(
+      (item) =>
+        assigneeId === "todos" ||
+        item.assigneeId === assigneeId ||
+        item.results.some((result) => result.assigneeId === assigneeId),
+    )
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
   const cases = data.cases.filter((item) => {
     if (item.projectId !== project.id) return false
+    if (planIds && !planIds.has(item.id)) return false
     if (sprintId === "todos") return true
     return item.sprintIds.includes(sprintId)
   })
@@ -55,7 +70,7 @@ export function DashboardView() {
         title="Tablero"
         description="Avance del sprint, tasa de aprobación y fallo, cobertura por tipo de ejecución y los casos que más fallan."
         actions={
-          <div className="w-56">
+          <div className="grid w-full min-w-0 gap-2 sm:w-auto sm:grid-cols-3">
             <EnumSelect
               ariaLabel="Sprint del tablero"
               value={sprintId}
@@ -63,6 +78,24 @@ export function DashboardView() {
               options={[
                 { value: "todos", label: "Todo el proyecto" },
                 ...sprints.map((item) => ({ value: item.id, label: item.name })),
+              ]}
+            />
+            <EnumSelect
+              ariaLabel="Plan del tablero"
+              value={planId}
+              onChange={setPlanId}
+              options={[
+                { value: "todos", label: "Todos los planes" },
+                ...plans.map((item) => ({ value: item.id, label: item.name })),
+              ]}
+            />
+            <EnumSelect
+              ariaLabel="Responsable del tablero"
+              value={assigneeId}
+              onChange={setAssigneeId}
+              options={[
+                { value: "todos", label: "Todo el equipo" },
+                ...members.map((item) => ({ value: item.id, label: item.name })),
               ]}
             />
           </div>
