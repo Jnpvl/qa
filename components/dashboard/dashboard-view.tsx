@@ -196,7 +196,7 @@ export function DashboardView() {
                 <li key={row.caseId} className="grid min-w-0 gap-1 border-t pt-3 first:border-0 first:pt-0">
                   <Link href={`/proyectos/${project.id}/casos/${row.testCase.id}`} className="break-words hover:underline">
                     <span className="mr-2 font-mono text-xs text-muted-foreground">
-                      {caseCode(project.key, row.testCase.number)}
+                      {caseCode(project.key, row.testCase.number, row.testCase.idPrefix, row.testCase.customId)}
                     </span>
                     {row.testCase.title}
                   </Link>
@@ -225,7 +225,7 @@ export function DashboardView() {
                       <td className="py-2 pr-3">
                         <Link href={`/proyectos/${project.id}/casos/${row.testCase.id}`} className="hover:underline">
                           <span className="mr-2 font-mono text-xs text-muted-foreground">
-                            {caseCode(project.key, row.testCase.number)}
+                            {caseCode(project.key, row.testCase.number, row.testCase.idPrefix, row.testCase.customId)}
                           </span>
                           {row.testCase.title}
                         </Link>

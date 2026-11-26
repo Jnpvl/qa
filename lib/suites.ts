@@ -48,6 +48,29 @@ export function suitePath(suites: Suite[], id: string) {
   return names
 }
 
+export function suitePrefixFromName(name: string) {
+  const prefix = name
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 24)
+  return /^[A-Z]/.test(prefix) ? prefix : `S-${prefix}`
+}
+
+export function effectiveSuitePrefix(suites: Suite[], suiteId: string) {
+  let current = suites.find((suite) => suite.id === suiteId)
+  let guard = 0
+  while (current && guard < 20) {
+    if (current.idPrefix?.trim()) return current.idPrefix.trim().toUpperCase()
+    if (!current.parentId) return suitePrefixFromName(current.name)
+    current = suites.find((suite) => suite.id === current?.parentId)
+    guard += 1
+  }
+  return "CASO"
+}
+
 export function wouldCycle(
   suites: Suite[],
   suiteId: string,

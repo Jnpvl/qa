@@ -609,7 +609,7 @@ export function CasesWorkspace() {
                               />
                             </td>
                             <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">
-                              {caseCode(project.key, item.number)}
+                              {caseCode(project.key, item.number, item.idPrefix, item.customId)}
                             </td>
                             <td className="px-3 py-2">
                               <p className="font-medium">{item.title}</p>
@@ -835,7 +835,7 @@ function CaseMain({
   return (
     <Link href={`/proyectos/${projectId}/casos/${item.id}`} className="min-w-0 flex-1">
       <p className="font-mono text-[11px] text-muted-foreground">
-        {caseCode(projectKey, item.number)}
+        {caseCode(projectKey, item.number, item.idPrefix, item.customId)}
       </p>
       <p className="font-medium break-words">{item.title}</p>
       <p className="text-xs break-words text-muted-foreground">

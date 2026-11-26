@@ -37,7 +37,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { EnumSelect } from "@/components/enum-select"
-import { childSuites, descendantIds, flattenSuites, wouldCycle } from "@/lib/suites"
+import { childSuites, descendantIds, effectiveSuitePrefix, flattenSuites, suitePrefixFromName, wouldCycle } from "@/lib/suites"
 import { useStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
 import type { Suite, TestCase } from "@/lib/types"
@@ -256,7 +256,7 @@ function SuiteNode({
             <DropdownMenuItem onSelect={() => onCreateChild(suite.id)}>
               Nueva subsección
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => onRename(suite)}>Renombrar</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onRename(suite)}>Editar suite</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => onMove(suite)}>Mover…</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => onReorder(suite.id, -1)}>Subir</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => onReorder(suite.id, 1)}>Bajar</DropdownMenuItem>
@@ -319,6 +319,7 @@ function SuiteDialog({
   const [seen, setSeen] = useState<string | null>(null)
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
+  const [idPrefix, setIdPrefix] = useState("")
   const [parentId, setParentId] = useState<string>("root")
   const [moveError, setMoveError] = useState("")
 
@@ -328,9 +329,11 @@ function SuiteDialog({
     if (editor.mode === "rename") {
       setName(editor.suite.name)
       setDescription(editor.suite.description)
+      setIdPrefix(editor.suite.idPrefix ?? "")
     } else if (editor.mode === "create") {
       setName("")
       setDescription("")
+      setIdPrefix("")
     } else {
       setParentId(editor.suite.parentId ?? "root")
     }
@@ -360,10 +363,11 @@ function SuiteDialog({
           parentId: editor.parentId,
           name,
           description,
+          idPrefix,
         })
         onCreated(created.id)
       } else if (editor.mode === "rename") {
-        store.updateSuite(editor.suite.id, { name, description })
+        store.updateSuite(editor.suite.id, { name, description, idPrefix })
       } else {
         store.moveSuite(editor.suite.id, parentId === "root" ? null : parentId)
       }
@@ -383,7 +387,7 @@ function SuiteDialog({
         <DialogHeader>
           <DialogTitle>
             {editor?.mode === "rename"
-              ? "Renombrar suite"
+              ? "Editar suite"
               : editor?.mode === "move"
                 ? "Mover suite"
                 : editor?.parentId
@@ -421,6 +425,24 @@ function SuiteDialog({
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
               />
+            </FormField>
+            <FormField label="Prefijo de ID" htmlFor="suite-id-prefix">
+              <Input
+                id="suite-id-prefix"
+                value={idPrefix}
+                onChange={(event) => setIdPrefix(event.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 24))}
+                placeholder={editor?.mode === "create" && editor.parentId ? effectiveSuitePrefix(suites, editor.parentId) : suitePrefixFromName(name || "INICIO")}
+                maxLength={24}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                {idPrefix.trim()
+                  ? `Los casos nuevos usarán ${idPrefix.trim().toUpperCase()}-001.`
+                  : editor?.mode === "rename"
+                    ? `Vacío: hereda ${editor.suite.parentId ? effectiveSuitePrefix(suites, editor.suite.parentId) : suitePrefixFromName(name || editor.suite.name)}.`
+                    : editor?.parentId
+                      ? `Vacío: hereda ${effectiveSuitePrefix(suites, editor.parentId)}.`
+                      : `Vacío: se deriva del nombre (${suitePrefixFromName(name || "INICIO")}).`}
+              </p>
             </FormField>
           </div>
         )}

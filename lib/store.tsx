@@ -12,7 +12,7 @@ import {
 } from "react"
 import { emptyWorkspace, migrate } from "@/lib/migrate"
 import { readState, writeState } from "@/lib/storage"
-import { wouldCycle } from "@/lib/suites"
+import { descendantIds, effectiveSuitePrefix, wouldCycle } from "@/lib/suites"
 import { caseCode, createId, isProjectKey, normalize } from "@/lib/text"
 import type {
   Attachment,
@@ -119,6 +119,8 @@ function nextCaseNumber(state: DemoState, projectId: string) {
 function snapshotCase(item: TestCase): NonNullable<RunResult["caseSnapshot"]> {
   return {
     number: item.number,
+    idPrefix: item.idPrefix,
+    customId: item.customId,
     title: item.title,
     preconditions: item.preconditions,
     steps: structuredClone(item.steps),
@@ -310,6 +312,7 @@ const actions = {
     parentId: string | null
     name: string
     description: string
+    idPrefix?: string
   }) {
     const name = input.name.trim()
     if (!name) throw new Error("Escribe el nombre de la suite.")
@@ -320,6 +323,7 @@ const actions = {
       name,
       description: input.description.trim(),
       order: 0,
+      idPrefix: input.idPrefix?.trim().toUpperCase() || undefined,
     }
     update((draft) => {
       const siblings = draft.suites.filter(
@@ -331,7 +335,7 @@ const actions = {
     })
     return suite
   },
-  updateSuite(id: string, patch: { name: string; description: string }) {
+  updateSuite(id: string, patch: { name: string; description: string; idPrefix?: string }) {
     const name = patch.name.trim()
     if (!name) throw new Error("Escribe el nombre de la suite.")
     update((draft) => {
@@ -339,6 +343,11 @@ const actions = {
       if (!suite) return
       suite.name = name
       suite.description = patch.description.trim()
+      suite.idPrefix = patch.idPrefix?.trim().toUpperCase() || undefined
+      const affected = new Set(descendantIds(draft.suites, id))
+      for (const item of draft.cases) {
+        if (affected.has(item.suiteId)) item.idPrefix = effectiveSuitePrefix(draft.suites, item.suiteId)
+      }
     })
   },
   deleteSuite(id: string) {
@@ -377,6 +386,10 @@ const actions = {
           item.id !== id,
       )
       target.order = siblings.reduce((max, item) => Math.max(max, item.order + 1), 0)
+      const affected = new Set(descendantIds(draft.suites, id))
+      for (const item of draft.cases) {
+        if (affected.has(item.suiteId)) item.idPrefix = effectiveSuitePrefix(draft.suites, item.suiteId)
+      }
     })
   },
   reorderSuite(id: string, direction: -1 | 1) {
@@ -409,10 +422,18 @@ const actions = {
     if (!suite || suite.projectId !== projectId) {
       throw new Error("Elige una suite para el caso.")
     }
+    const projectKey = state.projects.find((item) => item.id === projectId)?.key ?? "CASO"
+    const nextNumber = nextCaseNumber(state, projectId)
+    const nextId = caseCode(projectKey, nextNumber, effectiveSuitePrefix(state.suites, draft.suiteId), draft.customId)
+    if (state.cases.some((item) => item.projectId === projectId && caseCode(projectKey, item.number, item.idPrefix, item.customId).toUpperCase() === nextId.toUpperCase())) {
+      throw new Error(`El ID ${nextId} ya existe en este proyecto.`)
+    }
     const testCase: TestCase = {
       id: createId("cse"),
       projectId,
-      number: nextCaseNumber(state, projectId),
+      number: nextNumber,
+      idPrefix: effectiveSuitePrefix(state.suites, draft.suiteId),
+      customId: draft.customId?.trim() || undefined,
       suiteId: draft.suiteId,
       title,
       preconditions: draft.preconditions.trim(),
@@ -458,6 +479,7 @@ const actions = {
       const item = next.cases.find((candidate) => candidate.id === id)
       if (!item) return
       item.suiteId = draft.suiteId
+      item.idPrefix = effectiveSuitePrefix(next.suites, draft.suiteId)
       item.title = title
       item.preconditions = draft.preconditions.trim()
       item.steps = steps
@@ -499,6 +521,7 @@ const actions = {
       ...structuredClone(source),
       id: createId("cse"),
       number: nextCaseNumber(state, source.projectId),
+      customId: undefined,
       title: `${source.title} (copia)`,
       status: "borrador",
       updatedAt: new Date().toISOString(),
@@ -508,7 +531,7 @@ const actions = {
         {
           id: createId("chg"),
           at: new Date().toISOString(),
-          summary: `Clonado de ${caseCode(project?.key ?? "CASO", source.number)}.`,
+          summary: `Clonado de ${caseCode(project?.key ?? "CASO", source.number, source.idPrefix, source.customId)}.`,
         },
       ],
     }
@@ -747,11 +770,11 @@ const actions = {
     if (report.schema !== "qa-results/v1" || !Array.isArray(report.results)) {
       throw new Error("El archivo no tiene el formato de resultados Playwright esperado.")
     }
-    const byCode = new Map(state.cases.filter((item) => item.projectId === run.projectId).map((item) => [caseCode(project.key, item.number), item]))
+    const byCode = new Map(state.cases.filter((item) => item.projectId === run.projectId).map((item) => [caseCode(project.key, item.number, item.idPrefix, item.customId).toUpperCase(), item]))
     const coverage = (report.coverage ?? []).filter((item) => item && typeof item.caseId === "string")
     const results = report.results.filter((item) => item && typeof item.caseId === "string")
     const matched = results.filter((item) => {
-      const testCase = byCode.get(item.caseId)
+      const testCase = byCode.get(item.caseId.toUpperCase())
       return Boolean(testCase && run.results.some((result) => result.caseId === testCase.id))
     })
     if (results.length > 0 && matched.length === 0) {
@@ -763,7 +786,7 @@ const actions = {
       if (report.environment) target.environment = report.environment
       if (report.build) target.build = report.build
       for (const entry of coverage) {
-        const testCase = byCode.get(entry.caseId)
+        const testCase = byCode.get(entry.caseId.toUpperCase())
         if (!testCase || !entry.spec) continue
         const item = draft.cases.find((candidate) => candidate.id === testCase.id)
         if (!item) continue
@@ -772,7 +795,7 @@ const actions = {
         if (item.executionType === "manual") item.executionType = "ambos"
       }
       for (const entry of matched) {
-        const testCase = byCode.get(entry.caseId)
+        const testCase = byCode.get(entry.caseId.toUpperCase())
         const result = target.results.find((candidate) => candidate.caseId === testCase?.id)
         if (!result) continue
         result.status = entry.status
@@ -780,7 +803,7 @@ const actions = {
         result.minutes = typeof entry.durationMs === "number" ? Math.max(0, Math.round(entry.durationMs / 60000)) : result.minutes
       }
     })
-    return { updated: matched.length, covered: coverage.filter((item) => byCode.has(item.caseId)).length, ignored: results.length - matched.length }
+    return { updated: matched.length, covered: coverage.filter((item) => byCode.has(item.caseId.toUpperCase())).length, ignored: results.length - matched.length }
   },
   deleteRun(id: string) {
     update((draft) => {
@@ -915,7 +938,7 @@ const actions = {
     const testCase = state.cases.find((item) => item.id === input.caseId && item.projectId === input.projectId)
     if (!testCase) throw new Error("No encontramos el caso seleccionado.")
     const now = new Date().toISOString()
-    const run: TestRun = { id: createId("run"), projectId: input.projectId, sprintId: null, planId: null, name: `Prueba rápida · ${caseCode(state.projects.find((item) => item.id === input.projectId)?.key ?? "QA", testCase.number)}`, assigneeId: input.assigneeId ?? null, environment: input.environment?.trim() ?? "", build: input.build?.trim() ?? "", createdAt: now, closedAt: now, status: "cerrada", closeType: "completa", closeNote: "Prueba rápida de un caso.", results: [{ ...blankResult(testCase.id), status: "pendiente", caseSnapshot: snapshotCase(testCase) }] }
+    const run: TestRun = { id: createId("run"), projectId: input.projectId, sprintId: null, planId: null, name: `Prueba rápida · ${caseCode(state.projects.find((item) => item.id === input.projectId)?.key ?? "QA", testCase.number, testCase.idPrefix, testCase.customId)}`, assigneeId: input.assigneeId ?? null, environment: input.environment?.trim() ?? "", build: input.build?.trim() ?? "", createdAt: now, closedAt: now, status: "cerrada", closeType: "completa", closeNote: "Prueba rápida de un caso.", results: [{ ...blankResult(testCase.id), status: "pendiente", caseSnapshot: snapshotCase(testCase) }] }
     run.status = "en_progreso"
     run.closedAt = null
     run.closeType = null

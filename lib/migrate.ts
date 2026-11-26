@@ -12,7 +12,9 @@ import type {
   TestRun,
   TestStep,
   Requirement,
+  Suite,
 } from "@/lib/types"
+import { effectiveSuitePrefix } from "@/lib/suites"
 
 const priorities = new Set(["baja", "media", "alta", "critica"])
 const severities = new Set(["menor", "mayor", "critica", "bloqueante"])
@@ -72,6 +74,8 @@ function normalizeCase(value: unknown): TestCase | null {
     projectId: text(item.projectId),
     suiteId: text(item.suiteId),
     number: typeof item.number === "number" ? item.number : 0,
+    idPrefix: text(item.idPrefix) || undefined,
+    customId: text(item.customId).trim() || undefined,
     title: text(item.title),
     preconditions: text(item.preconditions),
     steps,
@@ -196,7 +200,21 @@ export function migrate(raw: unknown): DemoState | null {
   if (!Array.isArray(data.projects) || !Array.isArray(data.cases) || !Array.isArray(data.suites)) {
     return null
   }
-  const cases = data.cases.map(normalizeCase).filter((item): item is TestCase => Boolean(item))
+  const suites = asArray<Partial<Suite>>(data.suites)
+    .filter((item): item is Partial<Suite> & { id: string; projectId: string; name: string } => Boolean(item?.id && item.projectId && item.name))
+    .map((item) => ({
+      id: text(item.id),
+      projectId: text(item.projectId),
+      parentId: item.parentId ? text(item.parentId) : null,
+      name: text(item.name),
+      description: text(item.description),
+      order: typeof item.order === "number" ? item.order : 0,
+      idPrefix: text(item.idPrefix).trim().toUpperCase() || undefined,
+    }))
+  const cases = data.cases.map(normalizeCase).filter((item): item is TestCase => Boolean(item)).map((item) => ({
+    ...item,
+    idPrefix: item.idPrefix || (suites.some((suite) => suite.id === item.suiteId) ? effectiveSuitePrefix(suites, item.suiteId) : undefined),
+  }))
   const projects = (data.projects as Project[]).map((project) => {
     const legacy = project as Project & { environments?: Partial<Project["environments"]> }
     return {
@@ -213,7 +231,7 @@ export function migrate(raw: unknown): DemoState | null {
     version: 3,
     projects,
     sprints: asArray(data.sprints),
-    suites: data.suites as DemoState["suites"],
+    suites,
     cases,
     runs: asArray(data.runs).map(normalizeRun).filter((item): item is TestRun => Boolean(item)),
     plans: asArray(data.plans).map(normalizePlan).filter((item): item is Plan => Boolean(item)),

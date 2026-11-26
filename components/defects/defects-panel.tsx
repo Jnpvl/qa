@@ -66,7 +66,7 @@ export function DefectsPanel() {
                   <h2 className="font-medium break-words">{defect.title}</h2>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {formatDateTime(defect.createdAt)} · {severityLabel[defect.severity]}
-                    {testCase ? ` · ${caseCode(project.key, testCase.number)} ${testCase.title}` : ` · Sin caso (${defect.origin})`}
+                    {testCase ? ` · ${caseCode(project.key, testCase.number, testCase.idPrefix, testCase.customId)} ${testCase.title}` : ` · Sin caso (${defect.origin})`}
                   </p>
                   {defect.description ? <p className="mt-2 text-sm leading-6 text-muted-foreground">{defect.description}</p> : null}
                   <div className="mt-2 flex flex-wrap gap-3 text-sm">
@@ -114,7 +114,7 @@ export function DefectsPanel() {
           <div className="grid gap-3">
             <FormField label="Título"><Input value={title} onChange={(e) => setTitle(e.target.value)} /></FormField>
             <FormField label="Descripción"><Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Qué observaste y cómo afecta." /></FormField>
-            <FormField label="Caso relacionado (opcional)"><EnumSelect value={caseId} onChange={setCaseId} options={[{value:"none",label:"Sin caso"}, ...data.cases.filter((item) => item.projectId === project.id).map((item) => ({value:item.id,label:`${caseCode(project.key,item.number)} · ${item.title}`}))]} /></FormField>
+            <FormField label="Caso relacionado (opcional)"><EnumSelect value={caseId} onChange={setCaseId} options={[{value:"none",label:"Sin caso"}, ...data.cases.filter((item) => item.projectId === project.id).map((item) => ({value:item.id,label:`${caseCode(project.key,item.number,item.idPrefix,item.customId)} · ${item.title}`}))]} /></FormField>
             <FormField label="Origen"><EnumSelect value={origin} onChange={setOrigin} options={[{value:"exploratoria",label:"Prueba exploratoria"},{value:"soporte",label:"Soporte"},{value:"produccion",label:"Producción"},{value:"otro",label:"Otro"}]} /></FormField>
             <FormField label="Enlace externo (opcional)"><Input value={externalUrl} onChange={(e) => setExternalUrl(e.target.value)} placeholder="Azure DevOps, Jira, etc." /></FormField>
           </div>

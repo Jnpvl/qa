@@ -44,7 +44,7 @@ export function RunReport() {
           .map((item) => item.title)
           .join("; ")
         return [
-          testCase ? caseCode(project!.key, testCase.number) : result.caseId,
+          testCase ? caseCode(project!.key, testCase.number, testCase.idPrefix, testCase.customId) : result.caseId,
           snapshot?.title ?? testCase?.title ?? "",
           resultLabel[result.status],
           who?.name ?? "",
@@ -113,7 +113,7 @@ export function RunReport() {
                 <li key={result.caseId} className="rounded-xl border bg-card p-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-mono text-xs text-muted-foreground">
-                      {testCase ? caseCode(project.key, testCase.number) : result.caseId}
+                      {testCase ? caseCode(project.key, testCase.number, testCase.idPrefix, testCase.customId) : result.caseId}
                     </span>
                     <span className="font-medium">{snapshot?.title ?? testCase?.title}</span>
                     <ResultBadge status={result.status} />

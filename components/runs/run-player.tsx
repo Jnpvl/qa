@@ -438,7 +438,7 @@ export function RunPlayer() {
                   >
                     <span className="min-w-0 flex-1">
                       <span className="block font-mono text-[11px] text-muted-foreground">
-                        {caseCode(project.key, item.number)}
+                        {caseCode(project.key, item.number, item.idPrefix, item.customId)}
                       </span>
                       <span className="block text-sm">{item.title}</span>
                     </span>
@@ -454,7 +454,7 @@ export function RunPlayer() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="font-mono text-xs text-muted-foreground">
-                  {caseCode(project.key, active.number)}
+                  {caseCode(project.key, active.number, active.idPrefix, active.customId)}
                 </p>
                 <h2 className="text-base font-medium">{active.title}</h2>
               </div>

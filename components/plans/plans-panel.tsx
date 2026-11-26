@@ -269,7 +269,7 @@ function PlanPicker({
   onCaseIds,
 }: {
   suites: { id: string; projectId: string; parentId: string | null; name: string; description: string; order: number }[]
-  cases: { id: string; suiteId: string; number: number; title: string; status: string }[]
+  cases: { id: string; suiteId: string; number: number; title: string; status: string; idPrefix?: string; customId?: string }[]
   projectKey: string
   suiteIds: string[]
   caseIds: string[]
@@ -303,7 +303,7 @@ function PlanPicker({
                     onCaseIds(value === true ? [...caseIds, item.id] : caseIds.filter((id) => id !== item.id))
                   }
                 />
-                <span className="font-mono text-xs text-muted-foreground">{caseCode(projectKey, item.number)}</span>
+                <span className="font-mono text-xs text-muted-foreground">{caseCode(projectKey, item.number, item.idPrefix, item.customId)}</span>
                 <span className="min-w-0 truncate">{item.title}</span>
               </label>
             ))}

@@ -255,7 +255,7 @@ function RunFormDialog({
   const needle = normalize(query.trim())
   const visible = cases.filter((item) => {
     if (!needle) return true
-    return normalize(`${caseCode(project.key, item.number)} ${item.title}`).includes(needle)
+    return normalize(`${caseCode(project.key, item.number, item.idPrefix, item.customId)} ${item.title}`).includes(needle)
   })
   const flat = flattenSuites(suites, project.id).filter((row) =>
     visible.some((item) => descendantIds(suites, row.suite.id).includes(item.suiteId)),
@@ -433,7 +433,7 @@ function CaseRow({
       style={{ paddingLeft: `${depth * 16 + 12}px` }}
     >
       <Checkbox checked={checked} onCheckedChange={(value) => onCheckedChange(value === true)} />
-      <span className="font-mono text-xs text-muted-foreground">{caseCode(projectKey, item.number)}</span>
+      <span className="font-mono text-xs text-muted-foreground">{caseCode(projectKey, item.number, item.idPrefix, item.customId)}</span>
       <span className="min-w-0 flex-1 truncate">{item.title}</span>
       {item.status === "obsoleto" ? (
         <span className="text-xs text-muted-foreground">Obsoleto</span>

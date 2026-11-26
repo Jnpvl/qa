@@ -26,11 +26,12 @@ import {
   type ImportField,
 } from "@/lib/case-import"
 import { useStore } from "@/lib/store"
-import { createId } from "@/lib/text"
+import { caseCode, createId } from "@/lib/text"
 import { flattenSuites } from "@/lib/suites"
 import type { CaseDraft, TestCase } from "@/lib/types"
 
 const fieldLabels: Record<ImportField, string> = {
+  id: "ID",
   title: "Título",
   suite: "Suite",
   preconditions: "Precondiciones",
@@ -47,8 +48,9 @@ type FieldId = ImportField | "ignore"
 
 export function exportCases(cases: TestCase[], suites: { id: string; name: string }[], filename: string) {
   const rows = [
-    ["titulo", "suite", "precondiciones", "pasos", "prioridad", "severidad", "tipo", "estado", "ejecucion", "etiquetas"],
+    ["id", "titulo", "suite", "precondiciones", "pasos", "prioridad", "severidad", "tipo", "estado", "ejecucion", "etiquetas"],
     ...cases.map((item) => [
+      caseCode("CASO", item.number, item.idPrefix, item.customId),
       item.title,
       suites.find((suite) => suite.id === item.suiteId)?.name ?? "",
       item.preconditions,
@@ -135,8 +137,10 @@ export function CaseImportDialog({
           suiteId = defaultSuiteId
         }
         const kindValue = (column("kind") >= 0 ? row[column("kind")] : "").trim().toLowerCase()
+        const importedId = column("id") >= 0 ? row[column("id")]?.trim() : ""
         const draft: CaseDraft = {
           suiteId: suiteId ?? defaultSuiteId!,
+          customId: importedId || undefined,
           title,
           preconditions: column("preconditions") >= 0 ? row[column("preconditions")] ?? "" : "",
           steps: parseSteps(column("steps") >= 0 ? row[column("steps")] ?? "" : "").map((step) => ({
@@ -176,7 +180,7 @@ export function CaseImportDialog({
         <DialogHeader>
           <DialogTitle>Importar casos</DialogTitle>
           <DialogDescription>
-            El CSV se importa en {data?.projects.find((item) => item.id === projectId)?.name ?? "este proyecto"}. Las suites indicadas que no existan se crearán aquí; si una fila no indica suite, se usará la primera del proyecto o se creará “General”.
+              El CSV se importa en {data?.projects.find((item) => item.id === projectId)?.name ?? "este proyecto"}. Si incluye una columna ID, se conservará; si no, se generará con el prefijo de la suite. Las suites indicadas que no existan se crearán aquí; si una fila no indica suite, se usará la primera del proyecto o se creará “General”.
           </DialogDescription>
         </DialogHeader>
         <FormField label="Archivo CSV">

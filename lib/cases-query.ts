@@ -47,7 +47,7 @@ export function filterCases(input: CaseQuery) {
     if (!needle) return true
     const haystack = normalize(
       [
-        caseCode(input.projectKey, item.number),
+        caseCode(input.projectKey, item.number, item.idPrefix, item.customId),
         item.title,
         item.preconditions,
         ...item.tags,

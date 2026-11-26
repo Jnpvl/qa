@@ -141,7 +141,7 @@ export function CommandPalette({
           {cases.flatMap((item) => {
             const owner = data.projects.find((entry) => entry.id === item.projectId)
             if (!owner) return []
-            const code = caseCode(owner.key, item.number)
+            const code = caseCode(owner.key, item.number, item.idPrefix, item.customId)
             return (
               <CommandItem
                 key={item.id}

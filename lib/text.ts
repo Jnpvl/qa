@@ -2,8 +2,9 @@ export function normalize(value: string) {
   return value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase()
 }
 
-export function caseCode(key: string, number: number) {
-  return `${key}-${String(number).padStart(3, "0")}`
+export function caseCode(key: string, number: number, idPrefix?: string, customId?: string) {
+  if (customId?.trim()) return customId.trim()
+  return `${idPrefix?.trim() || key}-${String(number).padStart(3, "0")}`
 }
 
 export function suggestKey(name: string) {

@@ -126,7 +126,7 @@ export function CaseEditor() {
 
   useEffect(() => {
     if (!project) return
-    const code = testCase ? caseCode(project.key, testCase.number) : "Nuevo caso"
+    const code = testCase ? caseCode(project.key, testCase.number, testCase.idPrefix, testCase.customId) : "Nuevo caso"
     const title = draft?.title.trim() || "Sin título"
     document.title = `${isNew ? "Nuevo caso" : `${code} ${title}`} · ${product.name}`
   }, [project, testCase, draft?.title, isNew])
@@ -194,7 +194,7 @@ export function CaseEditor() {
 
   if (!draft) return null
 
-  const code = testCase ? caseCode(project.key, testCase.number) : "Nuevo"
+  const code = testCase ? caseCode(project.key, testCase.number, testCase.idPrefix, testCase.customId) : "Nuevo"
   const knownTags = [...new Set(data.cases.filter((item) => item.projectId === project.id).flatMap((item) => item.tags))]
 
   function update(patch: Partial<CaseDraft>) {

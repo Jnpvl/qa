@@ -2,6 +2,7 @@ import { normalize } from "@/lib/text"
 import type { CaseStatus, ExecutionType, Priority, Severity } from "@/lib/types"
 
 export const importFields = [
+  "id",
   "title",
   "suite",
   "preconditions",
@@ -17,6 +18,7 @@ export const importFields = [
 export type ImportField = (typeof importFields)[number]
 
 const aliases: Record<ImportField, string[]> = {
+  id: ["id", "caseid", "case_id", "testcaseid", "idcaso", "codigo"],
   title: ["titulo", "title", "nombre"],
   suite: ["suite"],
   preconditions: ["precondiciones", "preconditions"],
@@ -32,8 +34,12 @@ const aliases: Record<ImportField, string[]> = {
 export function mapCsvHeaders(headers: string[]) {
   const mapping: Record<string, ImportField | "ignore"> = {}
   headers.forEach((header, index) => {
-    const key = normalize(header.trim())
-    const match = importFields.find((field) => aliases[field].some((alias) => key === alias || key.includes(alias)))
+    const key = normalize(header.trim()).replace(/[^a-z0-9]/g, "")
+    const exact = importFields.find((field) => aliases[field].some((alias) => key === normalize(alias).replace(/[^a-z0-9]/g, "")))
+    const match = exact ?? importFields.find((field) => aliases[field].some((alias) => {
+      const normalizedAlias = normalize(alias).replace(/[^a-z0-9]/g, "")
+      return normalizedAlias.length > 2 && key.includes(normalizedAlias)
+    }))
     mapping[String(index)] = match ?? "ignore"
   })
   return mapping

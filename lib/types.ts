@@ -73,6 +73,7 @@ export interface Suite {
   name: string
   description: string
   order: number
+  idPrefix?: string
 }
 
 export interface TestStep {
@@ -86,6 +87,8 @@ export interface TestCase {
   projectId: string
   suiteId: string
   number: number
+  idPrefix?: string
+  customId?: string
   title: string
   preconditions: string
   steps: TestStep[]
@@ -123,6 +126,8 @@ export interface RunResult {
 
 export interface CaseSnapshot {
   number: number
+  idPrefix?: string
+  customId?: string
   title: string
   preconditions: string
   steps: TestStep[]
@@ -219,6 +224,7 @@ export interface DemoState {
 
 export interface CaseDraft {
   suiteId: string
+  customId?: string
   title: string
   preconditions: string
   steps: TestStep[]

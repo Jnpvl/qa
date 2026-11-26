@@ -26,7 +26,7 @@ export function downloadPlaywrightAgentPackage(project: Project, cases: TestCase
     schema: "qa-case-manifest/v1",
     project: { key: project.key, name: project.name, description: project.description, environments },
     cases: cases.map((item) => ({
-      caseId: caseCode(project.key, item.number),
+      caseId: caseCode(project.key, item.number, item.idPrefix, item.customId),
       title: item.title,
       suite: suites.find((suite) => suite.id === item.suiteId)?.name ?? "",
       preconditions: item.preconditions,
