@@ -246,7 +246,7 @@ function SuiteNode({
             <Button
               variant="ghost"
               size="icon-xs"
-              className="opacity-100 md:opacity-0 md:group-hover:opacity-100 data-[state=open]:opacity-100"
+              className="opacity-100"
               aria-label={`Acciones de ${suite.name}`}
             >
               <MoreHorizontal />

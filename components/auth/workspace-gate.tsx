@@ -1,8 +1,11 @@
 "use client"
 
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react"
+import Link from "next/link"
+import { usePathname, useRouter } from "next/navigation"
 import { LoaderCircle, LogIn, ShieldCheck } from "lucide-react"
 import { useAuth } from "@/components/auth/auth-provider"
+import { LandingPage } from "@/components/marketing/landing-page"
 import { Button } from "@/components/ui/button"
 import { useStore, replaceWorkspaceFromBackend } from "@/lib/store"
 import { emptyWorkspace } from "@/lib/migrate"
@@ -11,6 +14,8 @@ import { bootstrapBackend, markBackendUnavailable, setBackendTokenProvider } fro
 type GateState = "waiting" | "syncing" | "ready" | "error"
 
 export function WorkspaceGate({ children }: { children: ReactNode }) {
+  const pathname = usePathname()
+  const router = useRouter()
   const auth = useAuth()
   const store = useStore()
   const [state, setState] = useState<GateState>("waiting")
@@ -18,7 +23,6 @@ export function WorkspaceGate({ children }: { children: ReactNode }) {
   const [formError, setFormError] = useState("")
   const [busy, setBusy] = useState(false)
   const [retry, setRetry] = useState(0)
-  const [registering, setRegistering] = useState(true)
   const [name, setName] = useState("")
   const [organizationName, setOrganizationName] = useState("")
   const [email, setEmail] = useState("")
@@ -26,6 +30,17 @@ export function WorkspaceGate({ children }: { children: ReactNode }) {
   const startedFor = useRef<string | null>(null)
   const loadedOrganization = useRef<string | null>(null)
   const authKey = auth.user?.email ?? ""
+
+  useEffect(() => {
+    if (!auth.ready) return
+    if (auth.authenticated && (pathname === "/registro" || pathname === "/ingresar")) {
+      router.replace("/")
+      return
+    }
+    if (!auth.authenticated && !auth.invitationToken && pathname !== "/" && pathname !== "/registro" && pathname !== "/ingresar") {
+      router.replace("/")
+    }
+  }, [auth.ready, auth.authenticated, auth.invitationToken, pathname, router])
 
   useEffect(() => {
     if (!auth.ready || !auth.authenticated || !store.data || state === "ready" || state === "error" || startedFor.current === authKey) return
@@ -63,7 +78,7 @@ export function WorkspaceGate({ children }: { children: ReactNode }) {
     setBusy(true)
     setFormError("")
     try {
-      if (auth.invitationToken || registering) {
+      if (auth.invitationToken || pathname === "/registro") {
         await auth.register({ name, email, password, organizationName, invitationToken: auth.invitationToken ?? undefined })
       } else {
         await auth.login(email, password)
@@ -79,7 +94,11 @@ export function WorkspaceGate({ children }: { children: ReactNode }) {
   if (!auth.ready) return <Centered title="Conectando con QA" detail="Comprobando el acceso al sistema…" loading />
   if (auth.error) return <Centered title="No se pudo conectar" detail={auth.error} />
   if (!auth.authenticated) {
-    const creatingAccount = Boolean(auth.invitationToken) || registering
+    if (pathname === "/" && !auth.invitationToken) return <LandingPage />
+    if (pathname !== "/" && pathname !== "/registro" && pathname !== "/ingresar") {
+      return <Centered title="Volviendo al inicio" detail="Un momento…" loading />
+    }
+    const creatingAccount = Boolean(auth.invitationToken) || pathname === "/registro"
     return (
       <main className="grid min-h-dvh place-items-center bg-background p-6 text-foreground">
         <section className="w-full max-w-md rounded-2xl border bg-card p-8 shadow-sm">
@@ -94,11 +113,12 @@ export function WorkspaceGate({ children }: { children: ReactNode }) {
             {formError ? <p role="alert" className="text-sm text-destructive">{formError}</p> : null}
             <Button type="submit" disabled={busy} className="mt-1 w-full">{busy ? <LoaderCircle className="animate-spin" /> : <LogIn />}{busy ? "Procesando…" : creatingAccount ? "Crear cuenta y entrar" : "Iniciar sesión"}</Button>
           </form>
-          {!auth.invitationToken ? <p className="mt-4 text-center text-sm text-muted-foreground">{creatingAccount ? "¿Ya tienes una cuenta?" : "¿Primera vez aquí?"} <button type="button" className="font-medium text-primary hover:underline" onClick={() => { setRegistering(!creatingAccount); setFormError("") }}>{creatingAccount ? "Inicia sesión" : "Crea una cuenta"}</button></p> : null}
+          {!auth.invitationToken ? <p className="mt-4 text-center text-sm text-muted-foreground">{creatingAccount ? "¿Ya tienes una cuenta?" : "¿Primera vez aquí?"} <Link className="font-medium text-primary hover:underline" href={creatingAccount ? "/ingresar" : "/registro"}>{creatingAccount ? "Inicia sesión" : "Crea una cuenta"}</Link></p> : null}
         </section>
       </main>
     )
   }
+  if (pathname === "/registro" || pathname === "/ingresar") return <Centered title="Abriendo tu espacio" detail="Cargando proyectos y pruebas…" loading />
   if (state === "syncing" || state === "waiting") return <Centered title="Conectando con QA" detail="Cargando proyectos y pruebas…" loading />
   if (state === "error") return <Centered title="No se pudo conectar con el backend" detail={error} action={<Button onClick={() => { setError(""); setState("waiting"); setRetry((value) => value + 1) }}>Reintentar</Button>} />
   return <>{children}</>

@@ -55,7 +55,7 @@ import {
   priorities,
   priorityLabel,
 } from "@/lib/labels"
-import { flattenSuites, suitePath } from "@/lib/suites"
+import { descendantIds, flattenSuites, suitePath } from "@/lib/suites"
 import { caseCode } from "@/lib/text"
 import { useWorkspace } from "@/components/use-workspace"
 import { cn } from "@/lib/utils"
@@ -165,6 +165,10 @@ export function CasesWorkspace() {
     a.localeCompare(b, "es"),
   )
   const flatSuites = project ? flattenSuites(data?.suites ?? [], project.id) : []
+  const selectedSuite = suiteId === "todas" ? null : suites.find((item) => item.id === suiteId)
+  const selectedSuiteIncludesChildren = selectedSuite
+    ? descendantIds(suites, selectedSuite.id).length > 1
+    : false
 
   if (!data || !project) return <MissingProject />
 
@@ -353,6 +357,13 @@ export function CasesWorkspace() {
             />
           ) : (
             <>
+              {selectedSuite ? (
+                <p className="rounded-lg border bg-card px-3 py-2 text-sm text-muted-foreground">
+                  {selectedSuiteIncludesChildren
+                    ? `Mostrando casos de “${selectedSuite.name}” y sus subsecciones. Selecciona una subsección para ver solo ese grupo.`
+                    : `Mostrando casos de “${selectedSuite.name}”.`}
+                </p>
+              ) : null}
               <div className="flex flex-col gap-2">
                 <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
                   <Input
