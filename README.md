@@ -75,7 +75,7 @@ npm run build
 
 1. Importa este repositorio en Vercel.
 2. El framework es Next.js. Deja el comando de build en `npm run build` y el de instalación en `npm install`.
-3. Configura `NEXT_PUBLIC_QA_API_URL` para apuntar al backend desplegado.
+3. El frontend usa por defecto `https://qa-api.161-35-59-139.sslip.io` en producción. Configura `NEXT_PUBLIC_QA_API_URL` solo si quieres sobrescribir ese destino.
 4. Despliega `qa-api` por separado y configura su CORS para el dominio de Vercel. Los secretos de base de datos y de sesión viven solo en el backend.
 5. Deploy.
 

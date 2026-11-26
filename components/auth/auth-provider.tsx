@@ -1,6 +1,7 @@
 "use client"
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
+import { apiBase } from "@/lib/api-url"
 
 export type WorkspaceUser = {
   id: string
@@ -26,7 +27,6 @@ type AuthContextValue = {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
-const apiBase = (process.env.NEXT_PUBLIC_QA_API_URL ?? "").replace(/\/$/, "")
 const tokenKey = "qa.auth.token"
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

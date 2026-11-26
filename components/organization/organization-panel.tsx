@@ -8,6 +8,7 @@ import { useAuth } from "@/components/auth/auth-provider"
 import { EmptyState, PageHeader } from "@/components/bits"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { apiBase } from "@/lib/api-url"
 
 type OrganizationData = {
   id: string
@@ -16,8 +17,6 @@ type OrganizationData = {
   invitations: Array<{ id: string; email: string; role: string; expiresAt: string; createdAt: string }>
 }
 type InvitationResponse = { id: string; email: string; expiresAt: string; token: string }
-
-const apiBase = (process.env.NEXT_PUBLIC_QA_API_URL ?? "").replace(/\/$/, "")
 
 export function OrganizationPanel() {
   const auth = useAuth()

@@ -6,6 +6,7 @@ import { useAuth } from "@/components/auth/auth-provider"
 import { EmptyState, PageHeader } from "@/components/bits"
 import { useStore } from "@/lib/store"
 import { Button } from "@/components/ui/button"
+import { apiBase } from "@/lib/api-url"
 
 type ActivityEvent = {
   id: string
@@ -18,8 +19,6 @@ type ActivityEvent = {
   createdAt: string
   user: { id: string; name: string }
 }
-
-const apiBase = (process.env.NEXT_PUBLIC_QA_API_URL ?? "").replace(/\/$/, "")
 
 export function ActivityPanel() {
   const auth = useAuth()

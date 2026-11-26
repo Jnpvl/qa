@@ -8,14 +8,13 @@ import { EmptyState, PageHeader } from "@/components/bits"
 import { MissingProject } from "@/components/missing-project"
 import { Button } from "@/components/ui/button"
 import { useWorkspace } from "@/components/use-workspace"
+import { apiBase } from "@/lib/api-url"
 
 type ProjectMembers = {
   canManage: boolean
   members: Array<{ id: string; name: string; email?: string; role: string }>
   assignedIds: string[]
 }
-
-const apiBase = (process.env.NEXT_PUBLIC_QA_API_URL ?? "").replace(/\/$/, "")
 
 export function MembersPanel() {
   const auth = useAuth()

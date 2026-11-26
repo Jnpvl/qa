@@ -1,9 +1,9 @@
 import type { DemoState } from "@/lib/types"
+import { apiBase } from "@/lib/api-url"
 
 type TokenProvider = () => Promise<string>
 type WorkspaceResponse = { state: unknown | null; revision: number }
 
-const apiBase = (process.env.NEXT_PUBLIC_QA_API_URL ?? "").replace(/\/$/, "")
 let tokenProvider: TokenProvider | null = null
 let revision = 0
 let ready = false
