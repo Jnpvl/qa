@@ -96,6 +96,14 @@ export function CommandPalette({
           ) : null}
           {project ? (
             <CommandItem
+              value="configuracion sitio ambientes"
+              onSelect={() => go(`/proyectos/${project.id}/configuracion`)}
+            >
+              Configuración del proyecto
+            </CommandItem>
+          ) : null}
+          {project ? (
+            <CommandItem
               value="defectos"
               onSelect={() => go(`/proyectos/${project.id}/defectos`)}
             >

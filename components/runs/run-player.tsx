@@ -31,7 +31,7 @@ import { product } from "@/lib/product"
 import { caseCode } from "@/lib/text"
 import { useRouteParam, useWorkspace } from "@/components/use-workspace"
 import { cn } from "@/lib/utils"
-import type { Priority, ResultStatus, Severity, StepResultStatus, TestCase } from "@/lib/types"
+import type { AutomationReport, Priority, ResultStatus, Severity, StepResultStatus, TestCase } from "@/lib/types"
 
 const choices: {
   status: Exclude<ResultStatus, "pendiente">
@@ -116,10 +116,12 @@ export function RunPlayer() {
   const [rerunEnv, setRerunEnv] = useState("")
   const [rerunBuild, setRerunBuild] = useState("")
   const run = data?.runs.find((item) => item.id === runId && item.projectId === project?.id)
-  const allOrdered = run
-    ? run.results
-        .map((result) => data?.cases.find((item) => item.id === result.caseId))
-        .filter((item): item is TestCase => Boolean(item))
+  const allOrdered = run && data
+    ? run.results.map((result) => {
+        const source = data.cases.find((item) => item.id === result.caseId)
+        const frozen = result.caseSnapshot
+        return source && frozen ? { ...source, ...frozen, steps: frozen.steps } : source
+      }).filter((item): item is TestCase => Boolean(item))
     : []
   const ordered = allOrdered.filter((item) => {
     const result = run?.results.find((entry) => entry.caseId === item.id)
@@ -260,6 +262,15 @@ export function RunPlayer() {
     setActiveId(nextId)
   }
 
+  function importAutomationResults(file: File) {
+    if (!run || !project || closed) return
+    file.text().then((content) => {
+      const report = JSON.parse(content) as AutomationReport
+      const summary = store.importAutomationReport(run.id, report)
+      toast.success(`${summary.updated} resultados importados · ${summary.covered} casos vinculados a Playwright`)
+    }).catch(reportError)
+  }
+
   function mark(status: Exclude<ResultStatus, "pendiente">) {
     if (!run || !active || closed) return
     try {
@@ -274,7 +285,7 @@ export function RunPlayer() {
   }
 
   return (
-    <div className="mx-auto grid w-full min-w-0 max-w-6xl gap-4 p-4 md:p-6">
+    <div className="mx-auto grid w-full min-w-0 max-w-screen-2xl gap-4 p-4 md:p-6">
       <PageHeader
         title={run.name}
         description={
@@ -292,6 +303,7 @@ export function RunPlayer() {
             <Button asChild variant="outline">
               <Link href={`/proyectos/${project.id}/corridas/${run.id}/reporte`}>Reporte</Link>
             </Button>
+            {!closed ? <FilePicker label="Importar resultados Playwright" accept="application/json,.json" onFile={importAutomationResults} /> : null}
             {run.results.some((item) => item.status === "failed" || item.status === "blocked") ? (
               <Button
                 variant="outline"
@@ -595,7 +607,7 @@ export function RunPlayer() {
                   }}
                 />
               )}
-              <p className="text-xs text-muted-foreground">Hasta 350 KB. Se guarda en este navegador.</p>
+              <p className="text-xs text-muted-foreground">Hasta 350 KB. Se guarda junto al resultado de la corrida.</p>
             </div>
             {activeResult.status === "failed" ? (
               <DefectLinks
@@ -644,11 +656,12 @@ export function RunPlayer() {
                 : "Queda como historial. Puedes reabrirla si hace falta corregir un resultado."}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {stats.pending > 0 ? <p className="text-sm text-muted-foreground">La corrida se guardará como parcial. Los casos pendientes quedarán registrados en el cierre.</p> : null}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                store.closeRun(run.id)
+                store.closeRun(run.id, stats.pending > 0 ? "parcial" : "completa", stats.pending > 0 ? `${stats.pending} casos quedaron pendientes.` : "")
                 toast.success("Corrida cerrada")
               }}
             >

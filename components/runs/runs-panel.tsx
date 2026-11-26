@@ -43,6 +43,7 @@ export function RunsPanel() {
   const [appliedDraft, setAppliedDraft] = useState<string[] | null>(null)
   const [open, setOpen] = useState(false)
   const [removing, setRemoving] = useState<string | null>(null)
+  const [quick, setQuick] = useState(false)
 
   if (draft && draft !== appliedDraft) {
     setAppliedDraft(draft)
@@ -57,22 +58,22 @@ export function RunsPanel() {
   const removingRun = runs.find((item) => item.id === removing)
 
   return (
-    <div className="mx-auto grid w-full max-w-5xl gap-5 p-4 md:p-6">
+    <div className="mx-auto grid w-full min-w-0 max-w-screen-2xl gap-5 p-4 md:p-6">
       <PageHeader
         title="Corridas"
         description="Elige casos y registra si pasaron, fallaron, quedaron bloqueados o se omitieron."
         actions={
-          <Button onClick={() => setOpen(true)}>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row"><Button variant="outline" className="w-full sm:w-auto" onClick={() => { setQuick(true); setOpen(true) }}>Prueba rápida</Button><Button className="w-full sm:w-auto" onClick={() => { setQuick(false); setOpen(true) }}>
             <Plus />
             Nueva corrida
-          </Button>
+          </Button></div>
         }
       />
       {runs.length === 0 ? (
         <EmptyState
           title="Todavía no hay corridas"
           body="Crea una con los casos de un sprint, de una suite o con la selección que ya tengas."
-          action={<Button onClick={() => setOpen(true)}>Nueva corrida</Button>}
+          action={<Button onClick={() => { setQuick(true); setOpen(true) }}>Prueba rápida</Button>}
         />
       ) : (
         <ul className="grid gap-3">
@@ -123,10 +124,12 @@ export function RunsPanel() {
 
       <RunFormDialog
         open={open}
+        quick={quick}
+        onQuickChange={setQuick}
         initialCaseIds={draft ?? []}
         onOpenChange={(next) => {
           setOpen(next)
-          if (!next) store.setRunDraftIds(null)
+          if (!next) { store.setRunDraftIds(null); setQuick(false) }
         }}
         onCreated={(id) => {
           setOpen(false)
@@ -163,11 +166,15 @@ export function RunsPanel() {
 
 function RunFormDialog({
   open,
+  quick,
+  onQuickChange,
   onOpenChange,
   onCreated,
   initialCaseIds,
 }: {
   open: boolean
+  quick: boolean
+  onQuickChange: (value: boolean) => void
   onOpenChange: (open: boolean) => void
   onCreated: (id: string) => void
   initialCaseIds: string[]
@@ -179,14 +186,22 @@ function RunFormDialog({
   const [planId, setPlanId] = useState("none")
   const [query, setQuery] = useState("")
   const [selected, setSelected] = useState<string[]>([])
+  const [quickBuild, setQuickBuild] = useState("")
+  const [environmentChoice, setEnvironmentChoice] = useState("none")
+  const [customEnvironment, setCustomEnvironment] = useState("")
 
   if (open && !seen) {
     setSeen(true)
-    setName("")
+    setName(quick ? "Prueba rápida" : "")
     setSprintId("none")
     setPlanId("none")
     setQuery("")
     setSelected(initialCaseIds)
+    const configured = project
+      ? (["stage", "production", "local"] as const).find((key) => project.environments?.[key]?.trim())
+      : undefined
+    setEnvironmentChoice(configured ?? "none")
+    setCustomEnvironment("")
   }
   if (!open && seen) setSeen(false)
 
@@ -205,6 +220,38 @@ function RunFormDialog({
 
   if (!data || !project) return null
 
+  const environmentOptions = ([
+    ["local", "Desarrollo / local"],
+    ["stage", "Stage"],
+    ["production", "Producción"],
+  ] as const)
+    .filter(([key]) => Boolean(project.environments?.[key]?.trim()))
+    .map(([key, label]) => ({ value: key, label: `${label} · ${project.environments[key]}` }))
+  const selectedEnvironment = environmentChoice === "custom"
+    ? customEnvironment.trim()
+    : environmentChoice === "none" ? "" : environmentChoice
+  const activeProject = project
+
+  function environmentField() {
+    return <div className="grid gap-2">
+      <FormField label="Entorno">
+        <EnumSelect
+          value={environmentChoice}
+          onChange={setEnvironmentChoice}
+          options={[
+            { value: "none", label: "Sin especificar" },
+            ...environmentOptions,
+            { value: "custom", label: "Otro entorno…" },
+          ]}
+        />
+      </FormField>
+      {environmentChoice === "custom" ? <FormField label="Nombre del entorno">
+        <Input value={customEnvironment} onChange={(event) => setCustomEnvironment(event.target.value)} placeholder="QA local" />
+      </FormField> : null}
+      {environmentOptions.length === 0 ? <Link className="text-xs text-primary underline-offset-4 hover:underline" href={`/proyectos/${activeProject.id}/configuracion`}>Configura las URLs de los ambientes del proyecto</Link> : <p className="text-xs text-muted-foreground">El entorno queda registrado en esta corrida.</p>}
+    </div>
+  }
+
   const needle = normalize(query.trim())
   const visible = cases.filter((item) => {
     if (!needle) return true
@@ -215,6 +262,10 @@ function RunFormDialog({
   )
 
   function toggleIds(ids: string[], on: boolean) {
+    if (quick) {
+      setSelected(on ? ids.slice(-1) : [])
+      return
+    }
     setSelected((current) => {
       const next = new Set(current)
       for (const id of ids) {
@@ -235,12 +286,20 @@ function RunFormDialog({
 
   function create() {
     try {
+      if (quick) {
+        if (selected.length !== 1) throw new Error("Elige un solo caso para la prueba rápida.")
+        const run = store.createQuickRun({ projectId: project!.id, caseId: selected[0], environment: selectedEnvironment, build: quickBuild })
+        toast.success("Prueba rápida lista")
+        onCreated(run.id)
+        return
+      }
       const run = store.createRun({
         projectId: project!.id,
         name,
         sprintId: sprintId === "none" ? null : sprintId,
         planId: planId === "none" ? null : planId,
         caseIds: selected,
+        environment: selectedEnvironment,
       })
       toast.success("Corrida creada")
       onCreated(run.id)
@@ -250,24 +309,25 @@ function RunFormDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(next) => { onOpenChange(next); if (!next) onQuickChange(false) }}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Nueva corrida</DialogTitle>
+          <DialogTitle>{quick ? "Prueba rápida" : "Nueva corrida"}</DialogTitle>
           <DialogDescription>
-            Marca una suite para incluir sus casos, o agrega los de un sprint.
+            {quick ? "Selecciona un caso para ejecutar de forma puntual." : "Marca una suite para incluir sus casos, o agrega los de un sprint."}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
-          <FormField label="Nombre" htmlFor="run-name">
+          {!quick ? <FormField label="Nombre" htmlFor="run-name">
             <Input
               id="run-name"
               value={name}
               onChange={(event) => setName(event.target.value)}
               placeholder="Humo de checkout"
             />
-          </FormField>
-          <div className="grid gap-3 sm:grid-cols-2">
+          </FormField> : null}
+          {quick ? <div className="grid gap-3 sm:grid-cols-2">{environmentField()}<FormField label="Build o versión"><Input value={quickBuild} onChange={(e) => setQuickBuild(e.target.value)} placeholder="2026.11.26" /></FormField></div> : null}
+          {!quick ? <div className="grid gap-3 sm:grid-cols-2">
             <FormField label="Sprint">
               <EnumSelect
                 value={sprintId}
@@ -288,15 +348,16 @@ function RunFormDialog({
                 ]}
               />
             </FormField>
-          </div>
-          <div className="flex flex-wrap gap-2">
+            {environmentField()}
+          </div> : null}
+          {!quick ? <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" size="sm" onClick={addSprintCases} disabled={sprintId === "none"}>
               Agregar casos del sprint
             </Button>
             <span className="self-center text-xs text-muted-foreground">
               {selected.length} casos en la corrida
             </span>
-          </div>
+          </div> : <p className="text-sm text-muted-foreground">Selecciona exactamente un caso.</p>}
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -346,7 +407,7 @@ function RunFormDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button onClick={create}>Crear corrida</Button>
+            <Button onClick={create}>{quick ? "Iniciar prueba rápida" : "Crear corrida"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

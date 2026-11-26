@@ -37,6 +37,7 @@ export function RunReport() {
       ["Caso", "Título", "Resultado", "Responsable", "Minutos", "Comentario", "Defectos"],
       ...run!.results.map((result) => {
         const testCase = data!.cases.find((item) => item.id === result.caseId)
+        const snapshot = result.caseSnapshot
         const who = data!.members.find((item) => item.id === result.assigneeId)
         const defects = data!.defects
           .filter((item) => item.caseId === result.caseId && item.runId === run!.id)
@@ -44,7 +45,7 @@ export function RunReport() {
           .join("; ")
         return [
           testCase ? caseCode(project!.key, testCase.number) : result.caseId,
-          testCase?.title ?? "",
+          snapshot?.title ?? testCase?.title ?? "",
           resultLabel[result.status],
           who?.name ?? "",
           result.minutes === null ? "" : String(result.minutes),
@@ -57,7 +58,7 @@ export function RunReport() {
   }
 
   return (
-    <div className="mx-auto grid w-full min-w-0 max-w-4xl gap-5 p-4 md:p-6 print:max-w-none print:p-0">
+    <div className="mx-auto grid w-full min-w-0 max-w-screen-2xl gap-5 p-4 md:p-6 print:max-w-none print:p-0">
       <PageHeader
         title={run.name}
         description="Resumen de la corrida para compartir o archivar."
@@ -106,6 +107,7 @@ export function RunReport() {
           <ul className="grid gap-3">
             {failures.map((result) => {
               const testCase = data.cases.find((item) => item.id === result.caseId)
+              const snapshot = result.caseSnapshot
               const defects = data.defects.filter((item) => item.caseId === result.caseId && item.runId === run.id)
               return (
                 <li key={result.caseId} className="rounded-xl border bg-card p-4">
@@ -113,9 +115,10 @@ export function RunReport() {
                     <span className="font-mono text-xs text-muted-foreground">
                       {testCase ? caseCode(project.key, testCase.number) : result.caseId}
                     </span>
-                    <span className="font-medium">{testCase?.title}</span>
+                    <span className="font-medium">{snapshot?.title ?? testCase?.title}</span>
                     <ResultBadge status={result.status} />
                   </div>
+                  {snapshot?.steps?.length ? <ol className="mt-2 list-decimal pl-5 text-sm">{snapshot.steps.map((step) => <li key={step.id}>{step.action} → {step.expected}</li>)}</ol> : null}
                   {result.comment ? <p className="mt-2 text-sm">{result.comment}</p> : null}
                   {defects.length > 0 ? (
                     <ul className="mt-2 grid gap-1 text-sm">

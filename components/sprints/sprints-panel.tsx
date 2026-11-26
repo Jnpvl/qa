@@ -108,7 +108,7 @@ export function SprintsPanel() {
   }
 
   return (
-    <div className="mx-auto grid w-full max-w-5xl gap-5 p-4 md:p-6">
+    <div className="mx-auto grid w-full min-w-0 max-w-screen-2xl gap-5 p-4 md:p-6">
       <PageHeader
         title="Sprints"
         description="Un sprint, o milestone, es la ventana de tiempo. Los casos se ligan a uno o varios."
@@ -192,7 +192,7 @@ export function SprintsPanel() {
           if (!next) setEditing(null)
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="border-border/80 bg-card shadow-2xl sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editing ? "Editar sprint" : "Nuevo sprint"}</DialogTitle>
             <DialogDescription>También puedes pensarlo como un milestone.</DialogDescription>

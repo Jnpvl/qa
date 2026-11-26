@@ -9,7 +9,7 @@ export function MissingProject() {
     <div className="p-4 md:p-6">
       <EmptyState
         title="No encontramos este proyecto"
-        body="Puede que lo hayas eliminado en este navegador."
+        body="Puede que se haya eliminado o que ya no tengas acceso a él."
         action={
           <Button asChild>
             <Link href="/">Ver proyectos</Link>

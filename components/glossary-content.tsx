@@ -1,7 +1,6 @@
 "use client"
 
 import { Kbd } from "@/components/bits"
-import { product } from "@/lib/product"
 
 export function GlossaryContent() {
   return (
@@ -19,14 +18,14 @@ export function GlossaryContent() {
       <section className="grid gap-2">
         <h2 className="font-medium">Proyecto</h2>
         <p className="text-muted-foreground">
-          El producto o sistema que pruebas. Ahí viven las suites, los sprints, los planes y las corridas. La clave del proyecto arma el identificador visible del caso: en la tienda de ejemplo, la clave DEMO produce DEMO-001.
+          El producto o sistema que pruebas. Ahí viven las suites, los sprints, los planes y las corridas. La clave del proyecto arma el identificador visible del caso; por ejemplo, la clave QA produce QA-001.
         </p>
       </section>
 
       <section className="grid gap-2">
         <h2 className="font-medium">Suite</h2>
         <p className="text-muted-foreground">
-          Carpeta de casos. Puede tener secciones anidadas. En la tienda, Login contiene Recuperación de acceso, y Catálogo contiene Búsqueda y Filtros. Al elegir una suite ves también los casos de sus secciones.
+          Carpeta de casos. Puede tener secciones anidadas, por ejemplo una suite de Acceso con una sección de Recuperación de contraseña. Al elegir una suite ves también los casos de sus secciones.
         </p>
       </section>
 
@@ -61,14 +60,14 @@ export function GlossaryContent() {
       <section className="grid gap-2">
         <h2 className="font-medium">Defectos y equipo</h2>
         <p className="text-muted-foreground">
-          Un defecto nace de un resultado fallido: título, severidad, estado (abierto, en progreso, resuelto o cerrado) y un enlace opcional a Jira o GitHub. El equipo es una lista de nombres y roles para asignar responsables. No hay cuentas ni contraseñas.
+          Un defecto nace de un resultado fallido: título, severidad, estado (abierto, en progreso, resuelto o cerrado) y un enlace opcional a Jira o GitHub. El equipo es una lista de nombres y roles para asignar responsables; es independiente de las cuentas usadas para iniciar sesión.
         </p>
       </section>
 
       <section className="grid gap-2">
         <h2 className="font-medium">Datos</h2>
         <p className="text-muted-foreground">
-          Desde Casos exportas CSV o JSON e importas un CSV después de mapear las columnas. En Proyectos, Respaldar descarga todo el espacio de trabajo. Restaurar reemplaza todo lo que hay ahora por el contenido del archivo; antes de confirmar puedes descargar el respaldo actual. Si el archivo es de una versión anterior, se completa solo.
+          Los cambios del espacio se guardan en PostgreSQL. Desde Casos puedes exportar CSV o JSON e importar casos desde CSV después de mapear las columnas.
         </p>
       </section>
 
@@ -106,7 +105,7 @@ export function GlossaryContent() {
           </li>
         </ul>
         <p className="text-xs text-muted-foreground">
-          Los atajos de letras no corren mientras escribes en un campo. {product.name} guarda todo en este navegador.
+          Los atajos de letras no corren mientras escribes en un campo.
         </p>
       </section>
     </div>

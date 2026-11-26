@@ -10,14 +10,13 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react"
-import { markBackup } from "@/lib/backup"
 import { emptyWorkspace, migrate } from "@/lib/migrate"
 import { readState, writeState } from "@/lib/storage"
-import { seedData } from "@/lib/seed"
 import { wouldCycle } from "@/lib/suites"
 import { caseCode, createId, isProjectKey, normalize } from "@/lib/text"
 import type {
   Attachment,
+  AutomationReport,
   BulkPatch,
   CaseDraft,
   Defect,
@@ -70,10 +69,10 @@ function getServerSnapshot() {
 }
 
 function update(recipe: (draft: DemoState) => void) {
-  if (!snapshot) throw new Error("La demo todavía está cargando.")
+  if (!snapshot) throw new Error("El espacio de trabajo todavía está cargando.")
   const next = structuredClone(snapshot)
   recipe(next)
-  writeState(next, { countEdit: true })
+  writeState(next)
   snapshot = next
   emit()
 }
@@ -85,8 +84,29 @@ function commitState(next: DemoState) {
 }
 
 function current() {
-  if (!snapshot) throw new Error("La demo todavía está cargando.")
+  if (!snapshot) throw new Error("El espacio de trabajo todavía está cargando.")
   return snapshot
+}
+
+export function replaceWorkspaceFromBackend(raw: unknown) {
+  const next = migrate(raw)
+  if (!next) throw new Error("El espacio recibido del backend no se pudo leer.")
+  snapshot = next
+  emit()
+}
+
+export function replaceWorkspaceMembers(members: DemoState["members"]) {
+  if (!snapshot) return
+  snapshot = { ...snapshot, members: structuredClone(members) }
+  emit()
+}
+
+function cleanProjectEnvironments(value?: Project["environments"]): Project["environments"] {
+  return {
+    local: value?.local?.trim() ?? "",
+    stage: value?.stage?.trim() ?? "",
+    production: value?.production?.trim() ?? "",
+  }
 }
 
 function nextCaseNumber(state: DemoState, projectId: string) {
@@ -94,6 +114,20 @@ function nextCaseNumber(state: DemoState, projectId: string) {
     .filter((item) => item.projectId === projectId)
     .map((item) => item.number)
   return (numbers.length ? Math.max(...numbers) : 0) + 1
+}
+
+function snapshotCase(item: TestCase): NonNullable<RunResult["caseSnapshot"]> {
+  return {
+    number: item.number,
+    title: item.title,
+    preconditions: item.preconditions,
+    steps: structuredClone(item.steps),
+    priority: item.priority,
+    severity: item.severity,
+    kind: item.kind,
+    executionType: item.executionType,
+    requirementIds: [...(item.requirementIds ?? [])],
+  }
 }
 
 function blankResult(caseId: string): RunResult {
@@ -105,6 +139,7 @@ function blankResult(caseId: string): RunResult {
     stepResults: [],
     attachment: null,
     minutes: null,
+    caseSnapshot: undefined,
   }
 }
 
@@ -137,54 +172,12 @@ function assertKey(state: DemoState, key: string, ignoreId?: string) {
 }
 
 const actions = {
-  reset() {
-    const next = structuredClone(seedData)
-    next.initialized = true
-    commitState(next)
-  },
   startEmpty() {
     const next = emptyWorkspace()
     next.initialized = true
     commitState(next)
   },
-  loadDemo() {
-    const next = structuredClone(seedData)
-    next.initialized = true
-    commitState(next)
-  },
-  addDemo() {
-    const state = current()
-    if (state.projects.some((item) => item.sample || item.id === "prj_tienda")) {
-      throw new Error("El proyecto de ejemplo ya está en la lista.")
-    }
-    const demo = structuredClone(seedData)
-    const sampleKey = demo.projects[0]?.key
-    if (sampleKey && state.projects.some((item) => item.key === sampleKey)) {
-      throw new Error("Ya hay un proyecto con la clave DEMO. Cámbiala antes de cargar el ejemplo.")
-    }
-    update((draft) => {
-      draft.projects.push(...demo.projects)
-      draft.sprints.push(...demo.sprints)
-      draft.suites.push(...demo.suites)
-      draft.cases.push(...demo.cases)
-      draft.runs.push(...demo.runs)
-      draft.plans.push(...demo.plans)
-      draft.defects.push(...demo.defects)
-      draft.members.push(...demo.members)
-    })
-  },
-  removeSample() {
-    update((draft) => {
-      const sampleIds = new Set(
-        draft.projects.filter((item) => item.sample || item.id === "prj_tienda").map((item) => item.id),
-      )
-      for (const id of sampleIds) dropProject(draft, id)
-    })
-  },
-  downloadBackup() {
-    markBackup()
-  },
-  createProject(input: { name: string; key: string; description: string }) {
+  createProject(input: { name: string; key: string; description: string; environments?: Project["environments"] }) {
     const state = current()
     const name = input.name.trim()
     const key = input.key.trim().toUpperCase()
@@ -195,6 +188,7 @@ const actions = {
       name,
       key,
       description: input.description.trim(),
+      environments: cleanProjectEnvironments(input.environments),
       createdAt: new Date().toISOString(),
     }
     update((draft) => {
@@ -204,7 +198,7 @@ const actions = {
   },
   updateProject(
     id: string,
-    patch: { name: string; key: string; description: string },
+    patch: { name: string; key: string; description: string; environments?: Project["environments"] },
   ) {
     const state = current()
     const name = patch.name.trim()
@@ -217,6 +211,14 @@ const actions = {
       project.name = name
       project.key = key
       project.description = patch.description.trim()
+      project.environments = cleanProjectEnvironments(patch.environments)
+    })
+  },
+  updateProjectEnvironments(id: string, environments: Project["environments"]) {
+    update((draft) => {
+      const project = draft.projects.find((item) => item.id === id)
+      if (!project) return
+      project.environments = cleanProjectEnvironments(environments)
     })
   },
   deleteProject(id: string) {
@@ -289,6 +291,19 @@ const actions = {
         if (plan.sprintId === id) plan.sprintId = null
       }
     })
+  },
+  createRequirement(input: { projectId: string; key: string; title: string; description?: string; externalUrl?: string; status?: import("@/lib/types").Requirement["status"] }) {
+    const title = input.title.trim()
+    if (!title) throw new Error("Escribe el nombre del requisito.")
+    const requirement = { id: createId("req"), projectId: input.projectId, key: input.key.trim(), title, description: input.description?.trim() ?? "", externalUrl: input.externalUrl?.trim() ?? "", status: input.status ?? "activo", createdAt: new Date().toISOString() } satisfies import("@/lib/types").Requirement
+    update((draft) => { draft.requirements.push(requirement) })
+    return requirement
+  },
+  updateRequirement(id: string, patch: Partial<Pick<import("@/lib/types").Requirement, "key" | "title" | "description" | "externalUrl" | "status">>) {
+    update((draft) => { const item = draft.requirements.find((entry) => entry.id === id); if (!item) return; if (patch.title !== undefined) item.title = patch.title.trim(); if (patch.key !== undefined) item.key = patch.key.trim(); if (patch.description !== undefined) item.description = patch.description.trim(); if (patch.externalUrl !== undefined) item.externalUrl = patch.externalUrl.trim(); if (patch.status) item.status = patch.status })
+  },
+  deleteRequirement(id: string) {
+    update((draft) => { draft.requirements = draft.requirements.filter((item) => item.id !== id); for (const item of draft.cases) item.requirementIds = (item.requirementIds ?? []).filter((reqId) => reqId !== id) })
   },
   createSuite(input: {
     projectId: string
@@ -409,6 +424,9 @@ const actions = {
       tags: uniqueTags(draft.tags),
       status: draft.status,
       sprintIds: [...new Set(draft.sprintIds)],
+      requirementIds: [...new Set(draft.requirementIds)],
+      automationStatus: draft.automationStatus,
+      automationRef: draft.automationRef.trim(),
       attachments: [],
       changes: [
         {
@@ -450,6 +468,9 @@ const actions = {
       item.tags = uniqueTags(draft.tags)
       item.status = draft.status
       item.sprintIds = [...new Set(draft.sprintIds)]
+      item.requirementIds = [...new Set(draft.requirementIds)]
+      item.automationStatus = draft.automationStatus
+      item.automationRef = draft.automationRef.trim()
       item.updatedAt = new Date().toISOString()
       if (summary) {
         item.changes.push({ id: createId("chg"), at: item.updatedAt, summary })
@@ -466,7 +487,7 @@ const actions = {
       for (const plan of draft.plans) {
         plan.caseIds = plan.caseIds.filter((id) => !drop.has(id))
       }
-      draft.defects = draft.defects.filter((item) => !drop.has(item.caseId))
+      draft.defects = draft.defects.filter((item) => !item.caseId || !drop.has(item.caseId))
     })
   },
   duplicateCase(id: string) {
@@ -626,7 +647,12 @@ const actions = {
       createdAt: new Date().toISOString(),
       closedAt: null,
       status: "en_progreso",
-      results: valid.map((caseId) => blankResult(caseId)),
+      closeType: null,
+      closeNote: "",
+      results: valid.map((caseId) => {
+        const testCase = state.cases.find((item) => item.id === caseId)!
+        return { ...blankResult(caseId), caseSnapshot: snapshotCase(testCase) }
+      }),
     }
     update((draft) => {
       draft.runs.push(run)
@@ -687,12 +713,17 @@ const actions = {
     })
     return true
   },
-  closeRun(id: string) {
+  closeRun(id: string, closeType: "completa" | "parcial" = "completa", closeNote = "") {
     update((draft) => {
       const run = draft.runs.find((item) => item.id === id)
       if (!run) return
+      if (closeType === "completa" && run.results.some((item) => item.status === "pendiente")) {
+        throw new Error("La corrida tiene casos pendientes. Ciérrala como parcial o completa los resultados.")
+      }
       run.status = "cerrada"
       run.closedAt = new Date().toISOString()
+      run.closeType = closeType
+      run.closeNote = closeNote.trim()
     })
   },
   reopenRun(id: string) {
@@ -701,7 +732,55 @@ const actions = {
       if (!run) return
       run.status = "en_progreso"
       run.closedAt = null
+      run.closeType = null
+      run.closeNote = ""
     })
+  },
+  importAutomationReport(runId: string, report: AutomationReport) {
+    const state = current()
+    const run = state.runs.find((item) => item.id === runId)
+    if (!run || run.status === "cerrada") throw new Error("Abre una corrida para importar los resultados.")
+    const project = state.projects.find((item) => item.id === run.projectId)
+    if (!project || typeof report.projectKey !== "string" || report.projectKey.toUpperCase() !== project.key) {
+      throw new Error(`El reporte no corresponde al proyecto ${project?.key ?? "actual"}.`)
+    }
+    if (report.schema !== "qa-results/v1" || !Array.isArray(report.results)) {
+      throw new Error("El archivo no tiene el formato de resultados Playwright esperado.")
+    }
+    const byCode = new Map(state.cases.filter((item) => item.projectId === run.projectId).map((item) => [caseCode(project.key, item.number), item]))
+    const coverage = (report.coverage ?? []).filter((item) => item && typeof item.caseId === "string")
+    const results = report.results.filter((item) => item && typeof item.caseId === "string")
+    const matched = results.filter((item) => {
+      const testCase = byCode.get(item.caseId)
+      return Boolean(testCase && run.results.some((result) => result.caseId === testCase.id))
+    })
+    if (results.length > 0 && matched.length === 0) {
+      throw new Error("No se encontraron resultados que coincidan con los casos incluidos en esta corrida.")
+    }
+    update((draft) => {
+      const target = draft.runs.find((item) => item.id === runId)
+      if (!target || target.status === "cerrada") return
+      if (report.environment) target.environment = report.environment
+      if (report.build) target.build = report.build
+      for (const entry of coverage) {
+        const testCase = byCode.get(entry.caseId)
+        if (!testCase || !entry.spec) continue
+        const item = draft.cases.find((candidate) => candidate.id === testCase.id)
+        if (!item) continue
+        item.automationStatus = "automatizado"
+        item.automationRef = entry.spec
+        if (item.executionType === "manual") item.executionType = "ambos"
+      }
+      for (const entry of matched) {
+        const testCase = byCode.get(entry.caseId)
+        const result = target.results.find((candidate) => candidate.caseId === testCase?.id)
+        if (!result) continue
+        result.status = entry.status
+        result.comment = entry.error ?? ""
+        result.minutes = typeof entry.durationMs === "number" ? Math.max(0, Math.round(entry.durationMs / 60000)) : result.minutes
+      }
+    })
+    return { updated: matched.length, covered: coverage.filter((item) => byCode.has(item.caseId)).length, ignored: results.length - matched.length }
   },
   deleteRun(id: string) {
     update((draft) => {
@@ -777,10 +856,21 @@ const actions = {
   },
   createDefect(input: {
     projectId: string
-    caseId: string
+    caseId: string | null
     runId: string | null
     title: string
+    description?: string
+    stepsToReproduce?: string
+    expected?: string
+    actual?: string
     severity: Severity
+    priority?: import("@/lib/types").Priority
+    assigneeId?: string | null
+    environment?: string
+    build?: string
+    externalId?: string
+    origin?: Defect["origin"]
+    originNote?: string
     externalUrl: string
   }) {
     const title = input.title.trim()
@@ -791,14 +881,25 @@ const actions = {
       caseId: input.caseId,
       runId: input.runId,
       title,
+      description: input.description?.trim() ?? "",
+      stepsToReproduce: input.stepsToReproduce?.trim() ?? "",
+      expected: input.expected?.trim() ?? "",
+      actual: input.actual?.trim() ?? "",
       severity: input.severity,
+      priority: input.priority ?? "media",
+      assigneeId: input.assigneeId ?? null,
+      environment: input.environment?.trim() ?? "",
+      build: input.build?.trim() ?? "",
+      externalId: input.externalId?.trim() ?? "",
+      origin: input.origin ?? (input.runId ? "corrida" : "otro"),
+      originNote: input.originNote?.trim() ?? "",
       status: "abierto",
       externalUrl: input.externalUrl.trim(),
       createdAt: new Date().toISOString(),
     }
     update((draft) => {
       draft.defects.push(defect)
-      const item = draft.cases.find((candidate) => candidate.id === input.caseId)
+      const item = input.caseId ? draft.cases.find((candidate) => candidate.id === input.caseId) : undefined
       if (item) {
         item.changes.push({
           id: createId("chg"),
@@ -809,9 +910,22 @@ const actions = {
     })
     return defect
   },
+  createQuickRun(input: { projectId: string; caseId: string; environment?: string; build?: string; assigneeId?: string | null }) {
+    const state = current()
+    const testCase = state.cases.find((item) => item.id === input.caseId && item.projectId === input.projectId)
+    if (!testCase) throw new Error("No encontramos el caso seleccionado.")
+    const now = new Date().toISOString()
+    const run: TestRun = { id: createId("run"), projectId: input.projectId, sprintId: null, planId: null, name: `Prueba rápida · ${caseCode(state.projects.find((item) => item.id === input.projectId)?.key ?? "QA", testCase.number)}`, assigneeId: input.assigneeId ?? null, environment: input.environment?.trim() ?? "", build: input.build?.trim() ?? "", createdAt: now, closedAt: now, status: "cerrada", closeType: "completa", closeNote: "Prueba rápida de un caso.", results: [{ ...blankResult(testCase.id), status: "pendiente", caseSnapshot: snapshotCase(testCase) }] }
+    run.status = "en_progreso"
+    run.closedAt = null
+    run.closeType = null
+    run.closeNote = ""
+    update((draft) => { draft.runs.push(run) })
+    return run
+  },
   updateDefect(
     id: string,
-    patch: { title?: string; severity?: Severity; status?: DefectStatus; externalUrl?: string },
+    patch: { title?: string; description?: string; stepsToReproduce?: string; expected?: string; actual?: string; severity?: Severity; priority?: import("@/lib/types").Priority; assigneeId?: string | null; environment?: string; build?: string; externalId?: string; status?: DefectStatus; externalUrl?: string },
   ) {
     update((draft) => {
       const defect = draft.defects.find((item) => item.id === id)
@@ -822,6 +936,15 @@ const actions = {
         defect.title = title
       }
       if (patch.severity) defect.severity = patch.severity
+      if (patch.description !== undefined) defect.description = patch.description.trim()
+      if (patch.stepsToReproduce !== undefined) defect.stepsToReproduce = patch.stepsToReproduce.trim()
+      if (patch.expected !== undefined) defect.expected = patch.expected.trim()
+      if (patch.actual !== undefined) defect.actual = patch.actual.trim()
+      if (patch.priority) defect.priority = patch.priority
+      if (patch.assigneeId !== undefined) defect.assigneeId = patch.assigneeId
+      if (patch.environment !== undefined) defect.environment = patch.environment.trim()
+      if (patch.build !== undefined) defect.build = patch.build.trim()
+      if (patch.externalId !== undefined) defect.externalId = patch.externalId.trim()
       if (patch.status) defect.status = patch.status
       if (patch.externalUrl !== undefined) defect.externalUrl = patch.externalUrl.trim()
     })
@@ -830,13 +953,6 @@ const actions = {
     update((draft) => {
       draft.defects = draft.defects.filter((item) => item.id !== id)
     })
-  },
-  replaceState(raw: unknown) {
-    const next = migrate(raw)
-    if (!next) throw new Error("Ese archivo no es un respaldo de Casos.")
-    next.initialized = true
-    commitState(next)
-    markBackup()
   },
 }
 
@@ -849,6 +965,7 @@ function dropProject(draft: DemoState, id: string) {
   draft.plans = draft.plans.filter((item) => item.projectId !== id)
   draft.defects = draft.defects.filter((item) => item.projectId !== id)
   draft.members = draft.members.filter((item) => item.projectId !== id)
+  draft.requirements = draft.requirements.filter((item) => item.projectId !== id)
 }
 
 function cleanSteps(steps: CaseDraft["steps"]) {

@@ -11,6 +11,7 @@ import type {
   TestCase,
   TestRun,
   TestStep,
+  Requirement,
 } from "@/lib/types"
 
 const priorities = new Set(["baja", "media", "alta", "critica"])
@@ -81,6 +82,9 @@ function normalizeCase(value: unknown): TestCase | null {
     tags: asArray<unknown>(item.tags).map((tag) => text(tag)).filter(Boolean),
     status: statusOf(item.status),
     sprintIds: asArray<unknown>(item.sprintIds).map((id) => text(id)).filter(Boolean),
+    requirementIds: asArray<unknown>(item.requirementIds).map((id) => text(id)).filter(Boolean),
+    automationStatus: ["candidato", "planeado", "automatizado", "no_aplica"].includes(text(item.automationStatus)) ? item.automationStatus as TestCase["automationStatus"] : "candidato",
+    automationRef: text(item.automationRef),
     attachments: asArray<unknown>(item.attachments).map(attachment).filter((item): item is Attachment => Boolean(item)),
     changes,
     updatedAt: text(item.updatedAt) || new Date().toISOString(),
@@ -104,6 +108,7 @@ function normalizeResult(value: unknown): RunResult | null {
       })),
     attachment: attachment(item.attachment),
     minutes: typeof item.minutes === "number" && item.minutes >= 0 ? item.minutes : null,
+    caseSnapshot: item.caseSnapshot && typeof item.caseSnapshot === "object" ? item.caseSnapshot as NonNullable<RunResult["caseSnapshot"]> : undefined,
   }
 }
 
@@ -123,6 +128,8 @@ function normalizeRun(value: unknown): TestRun | null {
     createdAt: text(item.createdAt) || new Date().toISOString(),
     closedAt: item.closedAt ? text(item.closedAt) : null,
     status: item.status === "cerrada" ? "cerrada" : "en_progreso",
+    closeType: item.closeType === "completa" || item.closeType === "parcial" ? item.closeType : null,
+    closeNote: text(item.closeNote),
     results: asArray<unknown>(item.results).map(normalizeResult).filter((item): item is RunResult => Boolean(item)),
   }
 }
@@ -146,14 +153,25 @@ function normalizePlan(value: unknown): Plan | null {
 function normalizeDefect(value: unknown): Defect | null {
   if (!value || typeof value !== "object") return null
   const item = value as Partial<Defect>
-  if (!item.id || !item.projectId || !item.caseId || !item.title) return null
+  if (!item.id || !item.projectId || !item.title) return null
   return {
     id: text(item.id),
     projectId: text(item.projectId),
-    caseId: text(item.caseId),
+    caseId: item.caseId ? text(item.caseId) : null,
     runId: item.runId ? text(item.runId) : null,
     title: text(item.title),
+    description: text(item.description),
+    stepsToReproduce: text(item.stepsToReproduce),
+    expected: text(item.expected),
+    actual: text(item.actual),
     severity: severities.has(text(item.severity)) ? item.severity! : "mayor",
+    priority: priorities.has(text(item.priority)) ? item.priority! : "media",
+    assigneeId: item.assigneeId ? text(item.assigneeId) : null,
+    environment: text(item.environment),
+    build: text(item.build),
+    externalId: text(item.externalId),
+    origin: ["corrida", "exploratoria", "soporte", "produccion", "otro"].includes(text(item.origin)) ? item.origin as Defect["origin"] : item.runId ? "corrida" : "otro",
+    originNote: text(item.originNote),
     status: defectStatuses.has(text(item.status)) ? item.status! : "abierto",
     externalUrl: text(item.externalUrl),
     createdAt: text(item.createdAt) || new Date().toISOString(),
@@ -179,12 +197,20 @@ export function migrate(raw: unknown): DemoState | null {
     return null
   }
   const cases = data.cases.map(normalizeCase).filter((item): item is TestCase => Boolean(item))
-  const projects = (data.projects as Project[]).map((project) => ({
-    ...project,
-    sample: project.sample === true || project.id === "prj_tienda",
-  }))
+  const projects = (data.projects as Project[]).map((project) => {
+    const legacy = project as Project & { environments?: Partial<Project["environments"]> }
+    return {
+      ...project,
+      environments: {
+        local: text(legacy.environments?.local),
+        stage: text(legacy.environments?.stage),
+        production: text(legacy.environments?.production),
+      },
+      sample: project.sample === true || project.id === "prj_tienda",
+    }
+  })
   return {
-    version: 2,
+    version: 3,
     projects,
     sprints: asArray(data.sprints),
     suites: data.suites as DemoState["suites"],
@@ -193,6 +219,7 @@ export function migrate(raw: unknown): DemoState | null {
     plans: asArray(data.plans).map(normalizePlan).filter((item): item is Plan => Boolean(item)),
     defects: asArray(data.defects).map(normalizeDefect).filter((item): item is Defect => Boolean(item)),
     members: asArray(data.members).map(normalizeMember).filter((item): item is Member => Boolean(item)),
+    requirements: asArray<Partial<Requirement>>(data.requirements).filter((item): item is Partial<Requirement> & { id: string; projectId: string; title: string } => Boolean(item?.id && item.projectId && item.title)).map((item) => ({ id: text(item.id), projectId: text(item.projectId), key: text(item.key), title: text(item.title), description: text(item.description), externalUrl: text(item.externalUrl), status: ["propuesto", "activo", "completado", "cancelado"].includes(text(item.status)) ? item.status as Requirement["status"] : "activo", createdAt: text(item.createdAt) || new Date().toISOString() })),
     autoAdvance: typeof data.autoAdvance === "boolean" ? data.autoAdvance : true,
     initialized: data.initialized === false ? false : true,
   }
@@ -200,7 +227,7 @@ export function migrate(raw: unknown): DemoState | null {
 
 export function emptyWorkspace(): DemoState {
   return {
-    version: 2,
+    version: 3,
     projects: [],
     sprints: [],
     suites: [],
@@ -209,6 +236,7 @@ export function emptyWorkspace(): DemoState {
     plans: [],
     defects: [],
     members: [],
+    requirements: [],
     autoAdvance: true,
     initialized: false,
   }

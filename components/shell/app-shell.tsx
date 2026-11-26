@@ -6,30 +6,25 @@ import { useEffect, useState, type ReactNode } from "react"
 import { toast } from "sonner"
 import {
   Bug,
+  Building2,
   CircleHelp,
+  Clock3,
+  FolderKanban,
   Flag,
   LayoutDashboard,
   Layers,
   ListChecks,
+  LogOut,
   Menu,
   Play,
-  RotateCcw,
+  Waypoints,
   Search,
-  Users,
+  Settings2,
+  UserRoundPlus,
 } from "lucide-react"
 import { AppSkeleton, Kbd } from "@/components/bits"
 import { GlossaryContent } from "@/components/glossary-content"
 import { CommandPalette } from "@/components/shell/command-palette"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -50,20 +45,21 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
-import { backupReminder, downloadWorkspaceBackup, readBackupMeta } from "@/lib/backup"
 import { product } from "@/lib/product"
-import { useStore } from "@/lib/store"
-import { Input } from "@/components/ui/input"
+import { replaceWorkspaceMembers, useStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/components/auth/auth-provider"
 
 const nav = [
   { slug: "casos", label: "Casos", icon: ListChecks },
+  { slug: "requisitos", label: "Requisitos", icon: Waypoints },
   { slug: "sprints", label: "Sprints", icon: Flag },
   { slug: "planes", label: "Planes", icon: Layers },
   { slug: "corridas", label: "Corridas", icon: Play },
   { slug: "defectos", label: "Defectos", icon: Bug },
-  { slug: "equipo", label: "Equipo", icon: Users },
+  { slug: "equipo", label: "Equipo", icon: UserRoundPlus },
   { slug: "tablero", label: "Tablero", icon: LayoutDashboard },
+  { slug: "configuracion", label: "Configuración", icon: Settings2 },
 ] as const
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -76,7 +72,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </>
     )
   }
-  if (!store.data.initialized) return <Welcome onEmpty={() => store.startEmpty()} onDemo={() => store.loadDemo()} />
+  if (!store.data.initialized) return <Welcome onContinue={() => store.startEmpty()} />
   return <ShellFrame>{children}</ShellFrame>
 }
 
@@ -84,35 +80,25 @@ function ShellFrame({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const store = useStore()
+  const auth = useAuth()
   const data = store.data
   const projectId = pathname.match(/^\/proyectos\/([^/]+)/)?.[1] ?? null
   const project = data?.projects.find((item) => item.id === projectId) ?? null
   const [menuOpen, setMenuOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
-  const [resetOpen, setResetOpen] = useState(false)
-  const [phrase, setPhrase] = useState("")
-  const [quota, setQuota] = useState<string | null>(null)
-  const [, setBackupTick] = useState(0)
-  const backupMeta = readBackupMeta()
-  const realData = data?.projects.some((item) => !item.sample) ?? false
-  const reminder = backupReminder(backupMeta)
 
   useEffect(() => {
-    function onQuota(event: Event) {
-      setQuota((event as CustomEvent<string>).detail)
+    function onBackendSync(event: Event) {
+      const detail = (event as CustomEvent<{ status?: string; message?: string; members?: import("@/lib/types").Member[] }>).detail
+      if (detail?.status === "error") toast.error(detail.message ?? "No se pudo guardar en el backend.")
+      if (detail?.status === "saved" && Array.isArray(detail.members)) replaceWorkspaceMembers(detail.members)
     }
-    window.addEventListener("casos-quota", onQuota)
-    return () => window.removeEventListener("casos-quota", onQuota)
+    window.addEventListener("qa-backend-sync", onBackendSync)
+    return () => {
+      window.removeEventListener("qa-backend-sync", onBackendSync)
+    }
   }, [])
-
-  function backup() {
-    if (!data) return
-    downloadWorkspaceBackup(data)
-    setBackupTick((value) => value + 1)
-    setQuota(null)
-    toast.success("Respaldo descargado")
-  }
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -143,11 +129,23 @@ function ShellFrame({ children }: { children: ReactNode }) {
 
   const links = (
     <nav className="grid gap-1">
+      <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/45">General</p>
       <ShellLink href="/" active={pathname === "/"} onNavigate={() => setMenuOpen(false)}>
+        <FolderKanban />
         Proyectos
       </ShellLink>
-      {project
-        ? nav.map((item) => {
+      {auth.user?.role === "owner" ? <ShellLink href="/organizacion" active={pathname === "/organizacion"} onNavigate={() => setMenuOpen(false)}>
+        <Building2 />
+        Organización
+      </ShellLink> : null}
+      {auth.user?.role === "owner" ? <ShellLink href="/actividad" active={pathname === "/actividad"} onNavigate={() => setMenuOpen(false)}>
+        <Clock3 />
+        Bitácora
+      </ShellLink> : null}
+      {project ? <>
+        <div className="mx-3 my-2 border-t border-sidebar-border" />
+        <p className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/45">Proyecto</p>
+        {nav.map((item) => {
             const href = `/proyectos/${project.id}/${item.slug}`
             const Icon = item.icon
             return (
@@ -161,8 +159,10 @@ function ShellFrame({ children }: { children: ReactNode }) {
                 {item.label}
               </ShellLink>
             )
-          })
-        : null}
+          })}
+      </> : null}
+      {!project ? <div className="mx-3 my-2 border-t border-sidebar-border" /> : null}
+      <p className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/45">Ayuda</p>
       <ShellLink
         href="/ayuda"
         active={pathname === "/ayuda"}
@@ -176,32 +176,23 @@ function ShellFrame({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
-      <aside className="hidden w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex print:hidden">
-        <Link href="/" className="flex items-center gap-2 px-3 py-3">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden h-dvh w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex print:hidden">
+        <Link href="/" className="flex items-center gap-3 border-b border-sidebar-border px-4 py-5">
           <Mark />
-          <span className="font-semibold tracking-tight">{product.name}</span>
+          <span className="min-w-0"><span className="block truncate text-sm font-semibold tracking-tight">{product.name}</span><span className="mt-0.5 block truncate text-[10px] font-medium uppercase tracking-[0.12em] text-sidebar-foreground/55">Quality workspace</span></span>
         </Link>
         {project ? (
-          <p className="truncate px-3 pb-2 text-xs text-sidebar-foreground/70">{project.name}</p>
+          <div className="mx-3 my-3 rounded-lg border border-sidebar-border bg-sidebar-accent/60 px-3 py-2.5"><p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/50">Proyecto activo</p><p className="mt-1 truncate text-xs font-medium">{project.name}</p><p className="mt-1 font-mono text-[10px] text-sidebar-foreground/55">{project.key}</p></div>
         ) : null}
         <div className="min-h-0 flex-1 overflow-y-auto px-2">{links}</div>
-        <div className="grid gap-2 border-t border-sidebar-border p-3">
-          <p className="text-[11px] leading-4 text-sidebar-foreground/60">
-            Los cambios se guardan en este navegador.
-          </p>
-          <Button
-            variant="ghost"
-            className="justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-            onClick={() => setResetOpen(true)}
-          >
-            <RotateCcw />
-            Restablecer demo
-          </Button>
+        <div className="shrink-0 border-t border-sidebar-border p-3">
+          {auth.user?.email ? <p className="mb-2 truncate px-1 text-xs text-sidebar-foreground/60" title={auth.user.email}>{auth.user.email}</p> : null}
+          {auth.authenticated ? <Button variant="ghost" size="sm" className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent" onClick={auth.logout}><LogOut />Cerrar sesión</Button> : null}
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-12 min-w-0 shrink-0 items-center gap-2 overflow-hidden border-b bg-card px-3 print:hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col md:ml-60">
+        <header className="sticky top-0 z-20 flex h-14 min-w-0 shrink-0 items-center gap-1.5 overflow-hidden border-b border-border/80 bg-card/90 px-2 shadow-sm backdrop-blur-md sm:gap-2 sm:px-4 print:hidden">
           <Button
             variant="ghost"
             size="icon"
@@ -214,7 +205,7 @@ function ShellFrame({ children }: { children: ReactNode }) {
           {project ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="max-w-[50vw] truncate px-2">
+                <Button variant="ghost" className="max-w-[42vw] truncate px-2 sm:max-w-[50vw]">
                   {project.name}
                 </Button>
               </DropdownMenuTrigger>
@@ -233,11 +224,7 @@ function ShellFrame({ children }: { children: ReactNode }) {
           ) : (
             <span className="text-sm font-medium">{product.name}</span>
           )}
-          <div className="ml-auto flex items-center gap-1">
-            <Button variant="outline" size="sm" className="shrink-0" onClick={backup}>
-              <span className="hidden sm:inline">Respaldo</span>
-              <span className="sm:hidden">Copia</span>
-            </Button>
+          <div className="ml-auto flex shrink-0 items-center gap-1">
             <Button variant="outline" size="sm" className="shrink-0" onClick={() => setPaletteOpen(true)}>
               <Search />
               <span className="hidden sm:inline">Buscar</span>
@@ -255,41 +242,20 @@ function ShellFrame({ children }: { children: ReactNode }) {
             </Button>
           </div>
         </header>
-        {quota ? (
-          <p className="border-b bg-destructive/10 px-3 py-2 text-sm text-destructive">{quota}</p>
-        ) : reminder ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-amber-50 px-3 py-2 text-sm text-amber-950">
-            <span>{reminder} Los datos viven solo en este navegador.</span>
-            <Button size="sm" variant="outline" onClick={backup}>
-              Descargar respaldo
-            </Button>
-          </div>
-        ) : (
-          <p className="border-b px-3 py-1 text-[11px] text-muted-foreground print:hidden">
-            Los datos de este espacio viven en este navegador.
-          </p>
-        )}
         <main className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">{children}</main>
       </div>
 
       <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
-        <SheetContent side="left" className="w-72 bg-sidebar text-sidebar-foreground">
+        <SheetContent side="left" className="w-[min(18rem,85vw)] bg-sidebar text-sidebar-foreground">
           <SheetHeader>
             <SheetTitle className="text-sidebar-foreground">{product.name}</SheetTitle>
           </SheetHeader>
-          <div className="px-2">{links}</div>
-          <div className="mt-auto p-3">
-            <Button
-              variant="ghost"
-              className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              onClick={() => {
-                setMenuOpen(false)
-                setResetOpen(true)
-              }}
-            >
-              <RotateCcw />
-              Restablecer demo
-            </Button>
+          <div className="flex min-h-0 flex-1 flex-col px-2">
+            <div className="min-h-0 flex-1 overflow-y-auto">{links}</div>
+            <div className="shrink-0 border-t border-sidebar-border p-3">
+              {auth.user?.email ? <p className="mb-2 truncate px-1 text-xs text-sidebar-foreground/60">{auth.user.email}</p> : null}
+              {auth.authenticated ? <Button variant="ghost" size="sm" className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent" onClick={() => { auth.logout(); setMenuOpen(false) }}><LogOut />Cerrar sesión</Button> : null}
+            </div>
           </div>
         </SheetContent>
       </Sheet>
@@ -308,66 +274,19 @@ function ShellFrame({ children }: { children: ReactNode }) {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog
-        open={resetOpen}
-        onOpenChange={(open) => {
-          setResetOpen(open)
-          if (!open) setPhrase("")
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Restablecer la demo?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {realData
-                ? "Hay proyectos que no son el ejemplo. Esto los reemplaza todos por la tienda de demostración. Escribe BORRAR para continuar."
-                : "Se reemplaza lo que hay en este navegador por la tienda de ejemplo."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {realData ? (
-            <Input
-              aria-label="Escribe BORRAR para confirmar"
-              value={phrase}
-              onChange={(event) => setPhrase(event.target.value)}
-              placeholder="BORRAR"
-            />
-          ) : null}
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={realData && phrase !== "BORRAR"}
-              onClick={() => {
-                if (realData && phrase !== "BORRAR") return
-                store.reset()
-                setResetOpen(false)
-                setPhrase("")
-                router.push("/")
-              }}
-            >
-              Restablecer
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   )
 }
 
-function Welcome({ onEmpty, onDemo }: { onEmpty: () => void; onDemo: () => void }) {
+function Welcome({ onContinue }: { onContinue: () => void }) {
   return (
     <div className="mx-auto grid min-h-dvh w-full max-w-lg content-center gap-6 p-6">
       <div>
         <p className="text-sm text-muted-foreground">{product.name}</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">¿Cómo quieres empezar?</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Todo se guarda en este navegador. Puedes descargar un respaldo cuando quieras.
-        </p>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Tu espacio de QA está listo</h1>
       </div>
       <div className="grid gap-3">
-        <Button onClick={onEmpty}>Empezar vacío</Button>
-        <Button variant="outline" onClick={onDemo}>
-          Cargar demo
-        </Button>
+        <Button onClick={onContinue}>Continuar</Button>
       </div>
     </div>
   )
@@ -375,7 +294,7 @@ function Welcome({ onEmpty, onDemo }: { onEmpty: () => void; onDemo: () => void 
 
 function Mark() {
   return (
-    <span className="grid size-7 place-items-center rounded-md bg-sidebar-primary text-sm font-semibold text-sidebar-primary-foreground">
+    <span className="grid size-9 place-items-center rounded-xl bg-sidebar-primary text-base font-bold text-sidebar-primary-foreground shadow-lg shadow-black/10">
       {product.name.slice(0, 1).toUpperCase()}
     </span>
   )
@@ -398,8 +317,8 @@ function ShellLink({
       onClick={onNavigate}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-        active && "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
+        "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [&_svg]:size-4 [&_svg]:opacity-75",
+        active && "bg-sidebar-accent font-semibold text-sidebar-accent-foreground shadow-sm [&_svg]:text-sidebar-primary [&_svg]:opacity-100",
       )}
     >
       {children}

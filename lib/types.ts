@@ -33,8 +33,27 @@ export interface Project {
   key: string
   name: string
   description: string
+  environments: { local: string; stage: string; production: string }
   createdAt: string
+  createdById?: string
+  createdByName?: string
   sample?: boolean
+}
+
+export interface AutomationReport {
+  schema: "qa-results/v1"
+  projectKey: string
+  environment?: string
+  build?: string
+  generatedAt?: string
+  coverage?: { caseId: string; spec: string }[]
+  results: {
+    caseId: string
+    status: "passed" | "failed" | "blocked" | "skipped"
+    durationMs?: number
+    error?: string
+    spec?: string
+  }[]
 }
 
 export interface Sprint {
@@ -77,6 +96,9 @@ export interface TestCase {
   tags: string[]
   status: CaseStatus
   sprintIds: string[]
+  requirementIds: string[]
+  automationStatus: "candidato" | "planeado" | "automatizado" | "no_aplica"
+  automationRef: string
   attachments: Attachment[]
   changes: CaseChange[]
   updatedAt: string
@@ -95,6 +117,20 @@ export interface RunResult {
   stepResults: StepResult[]
   attachment: Attachment | null
   minutes: number | null
+  caseSnapshot?: CaseSnapshot
+  closeNote?: string
+}
+
+export interface CaseSnapshot {
+  number: number
+  title: string
+  preconditions: string
+  steps: TestStep[]
+  priority: Priority
+  severity: Severity
+  kind: CaseKind
+  executionType: ExecutionType
+  requirementIds: string[]
 }
 
 export interface TestRun {
@@ -109,6 +145,8 @@ export interface TestRun {
   createdAt: string
   closedAt: string | null
   status: RunStatus
+  closeType: "completa" | "parcial" | null
+  closeNote: string
   results: RunResult[]
 }
 
@@ -126,10 +164,21 @@ export interface Plan {
 export interface Defect {
   id: string
   projectId: string
-  caseId: string
+  caseId: string | null
   runId: string | null
   title: string
+  description: string
+  stepsToReproduce: string
+  expected: string
+  actual: string
   severity: Severity
+  priority: Priority
+  assigneeId: string | null
+  environment: string
+  build: string
+  externalId: string
+  origin: "corrida" | "exploratoria" | "soporte" | "produccion" | "otro"
+  originNote: string
   status: DefectStatus
   externalUrl: string
   createdAt: string
@@ -142,8 +191,19 @@ export interface Member {
   role: string
 }
 
+export interface Requirement {
+  id: string
+  projectId: string
+  key: string
+  title: string
+  description: string
+  externalUrl: string
+  status: "propuesto" | "activo" | "completado" | "cancelado"
+  createdAt: string
+}
+
 export interface DemoState {
-  version: 2
+  version: 3
   projects: Project[]
   sprints: Sprint[]
   suites: Suite[]
@@ -152,6 +212,7 @@ export interface DemoState {
   plans: Plan[]
   defects: Defect[]
   members: Member[]
+  requirements: Requirement[]
   autoAdvance: boolean
   initialized: boolean
 }
@@ -168,6 +229,9 @@ export interface CaseDraft {
   tags: string[]
   status: CaseStatus
   sprintIds: string[]
+  requirementIds: string[]
+  automationStatus: TestCase["automationStatus"]
+  automationRef: string
 }
 
 export interface BulkPatch {

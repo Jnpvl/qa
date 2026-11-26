@@ -84,7 +84,7 @@ export function ProjectFormDialog({
         <DialogHeader>
           <DialogTitle>{project ? "Editar proyecto" : "Nuevo proyecto"}</DialogTitle>
           <DialogDescription>
-            La clave forma el identificador de los casos, por ejemplo DEMO-001.
+            La clave forma el identificador de los casos, por ejemplo QA-001.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
@@ -100,7 +100,7 @@ export function ProjectFormDialog({
                 if (!keyTouched) setKey(suggestKey(next))
                 if (errors.name) setErrors((current) => ({ ...current, name: undefined }))
               }}
-              placeholder="Tienda en línea"
+              placeholder="Portal de clientes"
             />
           </FormField>
           <FormField

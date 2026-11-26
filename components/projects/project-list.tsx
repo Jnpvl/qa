@@ -3,8 +3,7 @@
 import Link from "next/link"
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { MoreHorizontal, Plus } from "lucide-react"
-import { toast } from "sonner"
+import { MoreHorizontal, Plus, UsersRound } from "lucide-react"
 import { EmptyState, PageHeader, reportError } from "@/components/bits"
 import { ProjectFormDialog } from "@/components/projects/project-form"
 import {
@@ -26,7 +25,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { useStore } from "@/lib/store"
-import { downloadWorkspaceBackup } from "@/lib/backup"
 import { countLabel, normalize } from "@/lib/text"
 import type { Project } from "@/lib/types"
 
@@ -38,8 +36,6 @@ export function ProjectList() {
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState<Project | null>(null)
   const [removing, setRemoving] = useState<Project | null>(null)
-  const [dropSample, setDropSample] = useState(false)
-  const [pendingRestore, setPendingRestore] = useState<string | null>(null)
 
   const projects = useMemo(() => {
     if (!data) return []
@@ -53,57 +49,12 @@ export function ProjectList() {
   if (!data) return null
 
   return (
-    <div className="mx-auto grid w-full max-w-5xl gap-5 p-4 md:p-6">
+    <div className="mx-auto grid w-full min-w-0 max-w-screen-2xl gap-5 p-4 md:p-6">
       <PageHeader
         title="Proyectos"
         description="Elige un proyecto para ver sus suites, casos y corridas."
         actions={
           <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              onClick={() => downloadWorkspaceBackup(data)}
-            >
-              Respaldar
-            </Button>
-            <label className="inline-flex">
-              <input
-                className="sr-only"
-                type="file"
-                accept="application/json,.json"
-                aria-label="Restaurar respaldo"
-                onChange={(event) => {
-                  const file = event.target.files?.[0]
-                  event.target.value = ""
-                  if (!file) return
-                  file
-                    .text()
-                    .then((text) => setPendingRestore(text))
-                    .catch(reportError)
-                }}
-              />
-              <span className="inline-flex h-8 cursor-pointer items-center rounded-lg border px-2.5 text-sm">
-                Restaurar
-              </span>
-            </label>
-            {data.projects.some((item) => item.sample) ? (
-              <Button variant="outline" onClick={() => setDropSample(true)}>
-                Quitar ejemplo
-              </Button>
-            ) : (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  try {
-                    store.addDemo()
-                    toast.success("Proyecto de ejemplo agregado")
-                  } catch (error) {
-                    reportError(error)
-                  }
-                }}
-              >
-                Cargar demo
-              </Button>
-            )}
             <Button onClick={() => setCreating(true)}>
               <Plus />
               Nuevo proyecto
@@ -135,13 +86,15 @@ export function ProjectList() {
         />
       ) : (
         <>
-          <ul className="grid gap-3 md:hidden">
+          <ul className="grid gap-3 xl:hidden">
             {projects.map((project) => (
               <li key={project.id} className="rounded-xl border bg-card p-4">
                 <ProjectSummary
                   project={project}
                   cases={data.cases.filter((item) => item.projectId === project.id).length}
                   sprints={data.sprints.filter((item) => item.projectId === project.id).length}
+                  creator={project.createdByName ?? "Anterior al registro de autoría"}
+                  members={data.members.filter((item) => item.projectId === project.id).length}
                   openRuns={
                     data.runs.filter(
                       (item) => item.projectId === project.id && item.status === "en_progreso",
@@ -153,12 +106,14 @@ export function ProjectList() {
               </li>
             ))}
           </ul>
-          <div className="hidden overflow-hidden rounded-xl border bg-card md:block">
-            <table className="w-full text-sm">
+          <div className="hidden overflow-x-auto rounded-xl border bg-card xl:block">
+            <table className="w-full min-w-[980px] text-sm">
               <thead className="border-b bg-muted/50 text-left text-xs text-muted-foreground">
                 <tr>
                   <th className="px-4 py-2 font-medium">Proyecto</th>
                   <th className="px-4 py-2 font-medium">Clave</th>
+                  <th className="px-4 py-2 font-medium">Creado por</th>
+                  <th className="px-4 py-2 font-medium">Equipo</th>
                   <th className="px-4 py-2 font-medium">Casos</th>
                   <th className="px-4 py-2 font-medium">Sprints</th>
                   <th className="px-4 py-2 font-medium">Corridas abiertas</th>
@@ -200,10 +155,15 @@ export function ProjectList() {
                         ) : null}
                       </td>
                       <td className="px-4 py-3 font-mono text-xs">{project.key}</td>
+                      <td className="px-4 py-3 text-sm">{project.createdByName ?? "Anterior al registro de autoría"}</td>
+                      <td className="px-4 py-3 tabular-nums">{data.members.filter((item) => item.projectId === project.id).length}</td>
                       <td className="px-4 py-3 tabular-nums">{cases}</td>
                       <td className="px-4 py-3 tabular-nums">{sprints}</td>
                       <td className="px-4 py-3 tabular-nums">{openRuns}</td>
                       <td className="px-4 py-3 text-right">
+                        <Button asChild variant="ghost" size="icon-sm" aria-label={`Equipo de ${project.name}`} title="Administrar equipo" onClick={(event) => event.stopPropagation()}>
+                          <Link href={`/proyectos/${project.id}/equipo`} onClick={(event) => event.stopPropagation()}><UsersRound /></Link>
+                        </Button>
                         <RowMenu
                           onEdit={() => setEditing(project)}
                           onDelete={() => setRemoving(project)}
@@ -225,69 +185,12 @@ export function ProjectList() {
         }}
         project={editing ?? undefined}
       />
-      <AlertDialog open={pendingRestore !== null} onOpenChange={(open) => !open && setPendingRestore(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Reemplazar todo el espacio?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Restaurar borra los proyectos, casos y corridas de este navegador y deja solo lo que viene en el archivo. Puedes descargar el respaldo actual antes de continuar.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <Button
-              variant="outline"
-              onClick={() => downloadWorkspaceBackup(data)}
-            >
-              Descargar respaldo actual
-            </Button>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={() => {
-                if (!pendingRestore) return
-                try {
-                  store.replaceState(JSON.parse(pendingRestore))
-                  setPendingRestore(null)
-                  toast.success("Respaldo restaurado")
-                } catch (error) {
-                  reportError(error)
-                }
-              }}
-            >
-              Reemplazar todo
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <AlertDialog open={dropSample} onOpenChange={setDropSample}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Quitar el proyecto de ejemplo?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Se borra la tienda de demostración y lo que hayas cambiado dentro de ella. Tus otros proyectos se quedan.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={() => {
-                store.removeSample()
-                setDropSample(false)
-                toast.success("Se quitó el proyecto de ejemplo")
-              }}
-            >
-              Quitar ejemplo
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
       <AlertDialog open={Boolean(removing)} onOpenChange={(open) => !open && setRemoving(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>¿Eliminar {removing?.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              Se eliminan también sus suites, casos, sprints, planes y corridas de este navegador.
+              Se eliminan también sus suites, casos, sprints, planes y corridas.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -317,6 +220,8 @@ function ProjectSummary({
   project,
   cases,
   sprints,
+  creator,
+  members,
   openRuns,
   onEdit,
   onDelete,
@@ -324,6 +229,8 @@ function ProjectSummary({
   project: Project
   cases: number
   sprints: number
+  creator: string
+  members: number
   openRuns: number
   onEdit: () => void
   onDelete: () => void
@@ -331,7 +238,7 @@ function ProjectSummary({
   return (
     <div className="grid gap-3">
       <div className="flex items-start justify-between gap-2">
-        <div>
+        <div className="min-w-0">
           <Link href={`/proyectos/${project.id}/casos`} className="font-medium">
             {project.name}
             {project.sample ? (
@@ -342,10 +249,13 @@ function ProjectSummary({
           </Link>
           <p className="font-mono text-xs text-muted-foreground">{project.key}</p>
         </div>
-        <RowMenu onEdit={onEdit} onDelete={onDelete} />
+        <div className="flex shrink-0 items-center gap-1">
+          <Link href={`/proyectos/${project.id}/equipo`} aria-label={`Equipo de ${project.name}`} title="Administrar equipo" className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"><UsersRound className="size-4" /></Link>
+          <RowMenu onEdit={onEdit} onDelete={onDelete} />
+        </div>
       </div>
       <p className="text-xs text-muted-foreground">
-        {countLabel(cases, "caso", "casos")} · {countLabel(sprints, "sprint", "sprints")} ·{" "}
+        Creado por {creator} · {countLabel(members, "miembro", "miembros")} · {countLabel(cases, "caso", "casos")} · {countLabel(sprints, "sprint", "sprints")} ·{" "}
         {countLabel(openRuns, "corrida abierta", "corridas abiertas")}
       </p>
     </div>

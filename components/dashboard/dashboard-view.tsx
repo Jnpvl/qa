@@ -74,7 +74,7 @@ export function DashboardView() {
     .filter((row) => row.testCase)
 
   return (
-    <div className="mx-auto grid w-full min-w-0 max-w-5xl gap-5 p-4 md:p-6">
+    <div className="mx-auto grid w-full min-w-0 max-w-screen-2xl gap-5 p-4 md:p-6">
       <PageHeader
         title="Tablero"
         description="Avance del sprint, tasa de aprobación y fallo, cobertura por tipo de ejecución y los casos que más fallan."
@@ -190,7 +190,7 @@ export function DashboardView() {
           <p className="text-sm text-muted-foreground">Ningún caso ha fallado en estas corridas.</p>
         ) : (
           <>
-          <ul className="grid gap-3 md:hidden">
+          <ul className="grid gap-3 lg:hidden">
             {failures.map((row) =>
               row.testCase ? (
                 <li key={row.caseId} className="grid min-w-0 gap-1 border-t pt-3 first:border-0 first:pt-0">
@@ -208,7 +208,7 @@ export function DashboardView() {
               ) : null,
             )}
           </ul>
-          <div className="hidden min-w-0 overflow-x-auto md:block">
+          <div className="hidden min-w-0 overflow-x-auto lg:block">
             <table className="w-full min-w-[520px] text-sm">
               <thead className="text-left text-xs text-muted-foreground">
                 <tr>

@@ -46,6 +46,7 @@ import {
 import { CaseImportDialog, exportCases } from "@/components/cases/case-transfer"
 import { filterCases, sortCases, type CaseSortKey } from "@/lib/cases-query"
 import { downloadText } from "@/lib/csv"
+import { downloadPlaywrightAgentPackage } from "@/lib/playwright-package"
 import {
   caseStatuses,
   caseStatusLabel,
@@ -292,11 +293,11 @@ export function CasesWorkspace() {
       <aside className="sticky top-0 hidden max-h-[calc(100dvh-3rem)] w-64 shrink-0 overflow-y-auto border-r bg-card lg:block">
         {tree}
       </aside>
-      <div className="w-full min-w-0 max-w-full flex-1 p-4 md:p-6">
+      <div className="mx-auto w-full min-w-0 max-w-screen-2xl flex-1 p-4 md:p-6">
         <div className="grid gap-4">
           <PageHeader
             title="Casos de prueba"
-            description="Busca, filtra, mueve y edita. Los cambios quedan en este navegador."
+            description="Busca, filtra, mueve y edita los casos de prueba del proyecto."
             actions={
               <>
                 <Button variant="outline" className="lg:hidden" onClick={() => setTreeOpen(true)}>
@@ -312,6 +313,14 @@ export function CasesWorkspace() {
                 >
                   JSON
                 </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => downloadPlaywrightAgentPackage(project, projectCases, suites)}
+                  disabled={projectCases.length === 0}
+                >
+                  Paquete Playwright
+                </Button>
+
                 <Button variant="outline" onClick={() => setImportOpen(true)}>
                   Importar
                 </Button>
@@ -508,7 +517,7 @@ export function CasesWorkspace() {
                 )
               ) : (
                 <>
-                  <ul className="w-full min-w-0 divide-y overflow-hidden rounded-xl border bg-card md:hidden">
+                  <ul className="w-full min-w-0 divide-y overflow-hidden rounded-xl border bg-card lg:hidden">
                     {pageItems.map((item, index) => (
                       <li key={item.id} className="flex w-full min-w-0 items-start gap-2 p-3">
                         <CaseCheckbox
@@ -550,7 +559,7 @@ export function CasesWorkspace() {
                       </li>
                     ))}
                   </ul>
-                  <div className="hidden min-w-0 overflow-x-auto rounded-xl border bg-card md:block">
+                  <div className="hidden min-w-0 overflow-x-auto rounded-xl border bg-card lg:block">
                     <table className="w-full min-w-[760px] text-sm">
                       <thead className="border-b bg-muted/50 text-left text-xs text-muted-foreground">
                         <tr>
@@ -774,7 +783,7 @@ export function CasesWorkspace() {
               ¿Eliminar {selected.size === 1 ? "este caso" : `${selected.size} casos`}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              También se quitan de las corridas de este navegador. El número no se reutiliza.
+              También se quitan de las corridas del proyecto. El número no se reutiliza.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

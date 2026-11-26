@@ -58,6 +58,9 @@ function toDraft(testCase: TestCase): CaseDraft {
     tags: [...testCase.tags],
     status: testCase.status,
     sprintIds: [...testCase.sprintIds],
+    requirementIds: [...(testCase.requirementIds ?? [])],
+    automationStatus: testCase.automationStatus ?? "candidato",
+    automationRef: testCase.automationRef ?? "",
   }
 }
 
@@ -74,6 +77,9 @@ function blank(suiteId: string): CaseDraft {
     tags: [],
     status: "borrador",
     sprintIds: [],
+    requirementIds: [],
+    automationStatus: "candidato",
+    automationRef: "",
   }
 }
 
@@ -231,7 +237,7 @@ export function CaseEditor() {
 
   return (
     <form
-      className="mx-auto grid w-full max-w-3xl gap-5 p-4 md:p-6"
+      className="mx-auto my-3 grid w-full min-w-0 max-w-screen-2xl gap-5 rounded-2xl border border-border/80 bg-card p-4 shadow-lg shadow-slate-900/[0.035] sm:my-4 sm:p-5 md:my-5 md:p-7 xl:p-8"
       onSubmit={(event) => {
         event.preventDefault()
         save()
@@ -294,7 +300,7 @@ export function CaseEditor() {
         />
       </FormField>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-x-5 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
         <FormField label="Suite">
           <EnumSelect
             value={draft.suiteId || flat[0]?.suite.id || "missing"}
@@ -351,7 +357,7 @@ export function CaseEditor() {
             </Link>
           </p>
         ) : (
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {sprints.map((sprint) => {
               const checked = draft.sprintIds.includes(sprint.id)
               return (
@@ -377,6 +383,27 @@ export function CaseEditor() {
           </div>
         )}
       </FormField>
+
+      <section className="grid gap-3 rounded-xl border border-border/80 bg-muted/35 p-4">
+        <h2 className="font-medium">Trazabilidad y automatización</h2>
+        <FormField label="Requisitos / historias" hint="IDs de Azure DevOps u otros requisitos del proyecto.">
+          <div className="grid gap-2">
+            {(data.requirements ?? []).filter((item) => item.projectId === project.id).map((item) => (
+              <label key={item.id} className="flex items-center gap-2 text-sm">
+                <Checkbox checked={draft.requirementIds.includes(item.id)} onCheckedChange={(value) => update({ requirementIds: value === true ? [...draft.requirementIds, item.id] : draft.requirementIds.filter((id) => id !== item.id) })} />
+                <span>{item.key ? `${item.key} · ` : ""}{item.title}</span>
+              </label>
+            ))}
+            {(data.requirements ?? []).filter((item) => item.projectId === project.id).length === 0 ? <p className="text-sm text-muted-foreground">Aún no hay requisitos registrados.</p> : null}
+          </div>
+        </FormField>
+        <FormField label="Estado de automatización">
+          <EnumSelect value={draft.automationStatus} onChange={(automationStatus) => update({ automationStatus })} options={[{value:"candidato",label:"Candidato"},{value:"planeado",label:"Planeado"},{value:"automatizado",label:"Automatizado"},{value:"no_aplica",label:"No aplica"}]} />
+        </FormField>
+        <FormField label="Referencia de Playwright" hint="Ruta o nombre del test en el repositorio; por ejemplo tests/checkout.spec.ts.">
+          <Input value={draft.automationRef} onChange={(event) => update({ automationRef: event.target.value })} placeholder="tests/checkout.spec.ts" />
+        </FormField>
+      </section>
 
       <FormField label="Etiquetas">
         <div className="flex flex-wrap gap-2">
@@ -527,7 +554,7 @@ export function CaseEditor() {
 
       <div className="grid gap-2">
         <h2 className="text-sm font-medium">Adjuntos</h2>
-        <p className="text-xs text-muted-foreground">Imagen o archivo de hasta 350 KB. Se guarda en este navegador.</p>
+        <p className="text-xs text-muted-foreground">Imagen o archivo de hasta 350 KB. Se guarda con el caso.</p>
         {testCase ? (
           <>
             {testCase.attachments.length === 0 ? (
@@ -632,10 +659,10 @@ export function CaseEditor() {
       ) : null}
 
       <div className="sticky bottom-0 -mx-4 flex items-center justify-between gap-3 border-t bg-background/95 px-4 py-3 backdrop-blur md:-mx-6 md:px-6">
-        <p className="text-xs text-muted-foreground">
+        <p className="min-w-0 text-xs text-muted-foreground">
           {dirty ? "Hay cambios sin guardar." : "Sin cambios pendientes."} Ctrl + Enter guarda.
         </p>
-        <Button type="submit">{isNew ? "Crear caso" : "Guardar"}</Button>
+        <Button className="shrink-0" type="submit">{isNew ? "Crear caso" : "Guardar"}</Button>
       </div>
 
       <AlertDialog open={leaveOpen} onOpenChange={setLeaveOpen}>
@@ -658,7 +685,7 @@ export function CaseEditor() {
           <AlertDialogHeader>
             <AlertDialogTitle>¿Eliminar {code}?</AlertDialogTitle>
             <AlertDialogDescription>
-              Se quita de las corridas de este navegador. El número no se reutiliza.
+              Se quita de las corridas del proyecto. El número no se reutiliza.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

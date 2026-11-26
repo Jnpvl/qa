@@ -77,8 +77,18 @@ export function CaseImportDialog({
   const data = store.data
   const [rows, setRows] = useState<string[][]>([])
   const [mapping, setMapping] = useState<Record<string, FieldId>>({})
+  const [filePickerKey, setFilePickerKey] = useState(0)
   const headers = rows[0] ?? []
   const body = rows.slice(1)
+
+  function handleOpenChange(next: boolean) {
+    if (!next) {
+      setRows([])
+      setMapping({})
+      setFilePickerKey((current) => current + 1)
+    }
+    onOpenChange(next)
+  }
 
   function load(file: File) {
     file
@@ -103,11 +113,7 @@ export function CaseImportDialog({
       return
     }
     const projectSuites = data.suites.filter((item) => item.projectId === projectId)
-    const fallback = projectSuites[0]
-    if (!fallback) {
-      reportError(new Error("Crea una suite antes de importar."))
-      return
-    }
+    let defaultSuiteId = projectSuites[0]?.id
     let created = 0
     try {
       for (const row of body) {
@@ -120,9 +126,17 @@ export function CaseImportDialog({
           suiteId = suite.id
           projectSuites.push(suite)
         }
+        if (!suiteId) {
+          if (!defaultSuiteId) {
+            const suite = store.createSuite({ projectId, parentId: null, name: "General", description: "" })
+            defaultSuiteId = suite.id
+            projectSuites.push(suite)
+          }
+          suiteId = defaultSuiteId
+        }
         const kindValue = (column("kind") >= 0 ? row[column("kind")] : "").trim().toLowerCase()
         const draft: CaseDraft = {
-          suiteId: suiteId ?? fallback.id,
+          suiteId: suiteId ?? defaultSuiteId!,
           title,
           preconditions: column("preconditions") >= 0 ? row[column("preconditions")] ?? "" : "",
           steps: parseSteps(column("steps") >= 0 ? row[column("steps")] ?? "" : "").map((step) => ({
@@ -136,13 +150,19 @@ export function CaseImportDialog({
           tags: (column("tags") >= 0 ? row[column("tags")] : "").split(",").map((item) => item.trim()).filter(Boolean),
           status: parseStatus(column("status") >= 0 ? row[column("status")] ?? "" : ""),
           sprintIds: [],
+          requirementIds: [],
+          automationStatus: "candidato",
+          automationRef: "",
         }
         store.createCase(projectId, draft)
         created += 1
       }
+      if (created === 0) {
+        reportError(new Error("No se importaron casos. Revisa que el CSV tenga títulos en la columna asignada."))
+        return
+      }
       toast.success(created === 1 ? "1 caso importado" : `${created} casos importados`)
-      onOpenChange(false)
-      setRows([])
+      handleOpenChange(false)
     } catch (error) {
       reportError(error)
     }
@@ -151,16 +171,16 @@ export function CaseImportDialog({
   const flat = data ? flattenSuites(data.suites, projectId) : []
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Importar casos</DialogTitle>
           <DialogDescription>
-            Elige el CSV, revisa las primeras filas y asigna cada columna. Si la suite no existe, se crea.
+            El CSV se importa en {data?.projects.find((item) => item.id === projectId)?.name ?? "este proyecto"}. Las suites indicadas que no existan se crearán aquí; si una fila no indica suite, se usará la primera del proyecto o se creará “General”.
           </DialogDescription>
         </DialogHeader>
         <FormField label="Archivo CSV">
-          <FilePicker label="Elegir CSV" accept=".csv,text/csv" emptyLabel="Ningún CSV seleccionado" onFile={load} />
+          <FilePicker key={filePickerKey} label="Elegir CSV" accept=".csv,text/csv" emptyLabel="Ningún CSV seleccionado" onFile={load} />
         </FormField>
         {headers.length > 0 ? (
           <div className="grid gap-3">
@@ -204,7 +224,7 @@ export function CaseImportDialog({
           </div>
         ) : null}
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Cancelar
           </Button>
           <Button onClick={importRows} disabled={body.length === 0}>

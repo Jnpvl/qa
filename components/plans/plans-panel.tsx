@@ -86,7 +86,7 @@ export function PlansPanel() {
   }
 
   return (
-    <div className="mx-auto grid w-full max-w-5xl gap-5 p-4 md:p-6">
+    <div className="mx-auto grid w-full min-w-0 max-w-screen-2xl gap-5 p-4 md:p-6">
       <PageHeader
         title="Planes"
         description="Un plan reúne suites o casos para volver a ejecutarlos. Desde aquí se crea la corrida."
@@ -187,7 +187,7 @@ export function PlansPanel() {
           if (!next) setEditing(null)
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="border-border/80 bg-card shadow-2xl sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editing ? "Editar plan" : "Nuevo plan"}</DialogTitle>
             <DialogDescription>Elige suites completas, casos sueltos, o ambos.</DialogDescription>
