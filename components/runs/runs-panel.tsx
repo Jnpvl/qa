@@ -83,7 +83,7 @@ export function RunsPanel() {
             return (
               <li key={run.id} className="rounded-xl border bg-card p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0">
                     <Link
                       href={`/proyectos/${project.id}/corridas/${run.id}`}
                       className="font-medium hover:underline"
@@ -96,15 +96,8 @@ export function RunsPanel() {
                       {plan ? ` · ${plan.name}` : ""}
                       {run.status === "cerrada" ? " · Cerrada" : " · En progreso"}
                     </p>
-                    <div className="mt-3 grid gap-2">
-                      <Progress value={stats.percent} aria-label="Avance de la corrida" />
-                      <p className="text-xs text-muted-foreground">
-                        {stats.done} de {stats.total} con resultado
-                        {stats.passRate !== null ? ` · ${stats.passRate}% de aprobación` : ""}
-                      </p>
-                    </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex shrink-0 gap-2">
                     <Button asChild size="sm">
                       <Link href={`/proyectos/${project.id}/corridas/${run.id}`}>
                         {run.status === "cerrada" ? "Ver" : "Ejecutar"}
@@ -114,6 +107,13 @@ export function RunsPanel() {
                       Eliminar
                     </Button>
                   </div>
+                </div>
+                <div className="mt-3 grid gap-2">
+                  <Progress className="w-full" value={stats.percent} aria-label="Avance de la corrida" />
+                  <p className="text-xs text-muted-foreground">
+                    {stats.done} de {stats.total} con resultado
+                    {stats.passRate !== null ? ` · ${stats.passRate}% de aprobación` : ""}
+                  </p>
                 </div>
               </li>
             )

@@ -50,10 +50,10 @@ export function DashboardView() {
     .filter((row) => row.testCase)
 
   return (
-    <div className="mx-auto grid w-full max-w-5xl gap-5 p-4 md:p-6">
+    <div className="mx-auto grid w-full min-w-0 max-w-5xl gap-5 p-4 md:p-6">
       <PageHeader
         title="Tablero"
-        description="Avance del sprint, tasa de pasó y falló, cobertura por tipo de ejecución y los casos que más fallan."
+        description="Avance del sprint, tasa de aprobación y fallo, cobertura por tipo de ejecución y los casos que más fallan."
         actions={
           <div className="w-56">
             <EnumSelect
@@ -138,12 +138,31 @@ export function DashboardView() {
         )}
       </section>
 
-      <section className="grid gap-3 rounded-xl border bg-card p-4">
+      <section className="grid min-w-0 gap-3 rounded-xl border bg-card p-4">
         <h2 className="text-sm font-medium">Casos con más fallos</h2>
         {failures.length === 0 ? (
           <p className="text-sm text-muted-foreground">Ningún caso ha fallado en estas corridas.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <ul className="grid gap-3 md:hidden">
+            {failures.map((row) =>
+              row.testCase ? (
+                <li key={row.caseId} className="grid min-w-0 gap-1 border-t pt-3 first:border-0 first:pt-0">
+                  <Link href={`/proyectos/${project.id}/casos/${row.testCase.id}`} className="break-words hover:underline">
+                    <span className="mr-2 font-mono text-xs text-muted-foreground">
+                      {caseCode(project.key, row.testCase.number)}
+                    </span>
+                    {row.testCase.title}
+                  </Link>
+                  <p className="text-xs text-muted-foreground">
+                    {row.failCount} {row.failCount === 1 ? "fallo" : "fallos"} · {row.passCount > 0 ? "También pasó en otra corrida" : "Sin una ejecución exitosa posterior"}
+                  </p>
+                  <ResultBadge status={row.latest} />
+                </li>
+              ) : null,
+            )}
+          </ul>
+          <div className="hidden min-w-0 overflow-x-auto md:block">
             <table className="w-full min-w-[520px] text-sm">
               <thead className="text-left text-xs text-muted-foreground">
                 <tr>
@@ -170,7 +189,7 @@ export function DashboardView() {
                         <ResultBadge status={row.latest} />
                       </td>
                       <td className="py-2 text-xs text-muted-foreground">
-                        {row.passCount > 0 ? "También pasó en otra corrida" : "Sin un pasó posterior"}
+                        {row.passCount > 0 ? "También pasó en otra corrida" : "Sin una ejecución exitosa posterior"}
                       </td>
                     </tr>
                   ) : null,
@@ -178,6 +197,7 @@ export function DashboardView() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </section>
     </div>

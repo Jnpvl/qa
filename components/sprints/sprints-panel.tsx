@@ -29,7 +29,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { sprintStatusLabel, sprintStatuses } from "@/lib/labels"
-import { countLabel, formatDate } from "@/lib/text"
+import { countLabel, formatDate, formatDateInput, parseDateInput } from "@/lib/text"
 import { useWorkspace } from "@/components/use-workspace"
 import type { Sprint, SprintStatus } from "@/lib/types"
 
@@ -47,18 +47,20 @@ export function SprintsPanel() {
   const [editing, setEditing] = useState<Sprint | null>(null)
   const [removing, setRemoving] = useState<Sprint | null>(null)
   const [form, setForm] = useState(empty)
+  const [errors, setErrors] = useState<{ name?: string; start?: string; end?: string }>({})
   const formKey = editing?.id ?? (open ? "new" : "closed")
   const [seen, setSeen] = useState<string | null>(null)
 
   if ((open || editing) && seen !== formKey) {
     setSeen(formKey)
+    setErrors({})
     setForm(
       editing
         ? {
             name: editing.name,
             goal: editing.goal,
-            startDate: editing.startDate,
-            endDate: editing.endDate,
+            startDate: formatDateInput(editing.startDate),
+            endDate: formatDateInput(editing.endDate),
             status: editing.status,
           }
         : empty,
@@ -73,17 +75,34 @@ export function SprintsPanel() {
     .sort((a, b) => a.startDate.localeCompare(b.startDate))
 
   function save() {
+    const next: { name?: string; start?: string; end?: string } = {}
+    if (!form.name.trim()) next.name = "Escribe el nombre del sprint."
+    const start = form.startDate.trim() ? parseDateInput(form.startDate) : ""
+    const end = form.endDate.trim() ? parseDateInput(form.endDate) : ""
+    if (form.startDate.trim() && !start) next.start = "Usa el formato dd/mm/aaaa."
+    if (form.endDate.trim() && !end) next.end = "Usa el formato dd/mm/aaaa."
+    if (start && end && end < start) next.end = "La fecha de fin no puede ser anterior al inicio."
+    if (next.name || next.start || next.end) {
+      setErrors(next)
+      reportError(new Error(next.name || next.end || next.start || "Revisa los campos."))
+      return
+    }
+    const payload = { ...form, startDate: start || "", endDate: end || "" }
     try {
       if (editing) {
-        store.updateSprint(editing.id, form)
+        store.updateSprint(editing.id, payload)
         toast.success("Sprint actualizado")
       } else {
-        store.createSprint({ projectId: project!.id, ...form })
+        store.createSprint({ projectId: project!.id, ...payload })
         toast.success("Sprint creado")
       }
+      setErrors({})
       setOpen(false)
       setEditing(null)
     } catch (error) {
+      const message = error instanceof Error ? error.message : "No se pudo completar."
+      if (message.includes("fin") || message.includes("inicio")) setErrors({ end: message })
+      else if (message.includes("nombre")) setErrors({ name: message })
       reportError(error)
     }
   }
@@ -179,11 +198,16 @@ export function SprintsPanel() {
             <DialogDescription>También puedes pensarlo como un milestone.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
-            <FormField label="Nombre" htmlFor="sprint-name">
+            <FormField label="Nombre" htmlFor="sprint-name" error={errors.name}>
               <Input
                 id="sprint-name"
                 value={form.name}
-                onChange={(event) => setForm({ ...form, name: event.target.value })}
+                aria-invalid={errors.name ? true : undefined}
+                aria-describedby={errors.name ? "sprint-name-error" : undefined}
+                onChange={(event) => {
+                  setForm({ ...form, name: event.target.value })
+                  if (errors.name) setErrors((current) => ({ ...current, name: undefined }))
+                }}
               />
             </FormField>
             <FormField label="Objetivo" htmlFor="sprint-goal">
@@ -194,20 +218,34 @@ export function SprintsPanel() {
               />
             </FormField>
             <div className="grid gap-3 sm:grid-cols-2">
-              <FormField label="Inicio" htmlFor="sprint-start">
+              <FormField label="Inicio" htmlFor="sprint-start" error={errors.start}>
                 <Input
                   id="sprint-start"
-                  type="date"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  placeholder="dd/mm/aaaa"
                   value={form.startDate}
-                  onChange={(event) => setForm({ ...form, startDate: event.target.value })}
+                  aria-invalid={errors.start ? true : undefined}
+                  aria-describedby={errors.start ? "sprint-start-error" : undefined}
+                  onChange={(event) => {
+                    setForm({ ...form, startDate: event.target.value })
+                    if (errors.start) setErrors((current) => ({ ...current, start: undefined }))
+                  }}
                 />
               </FormField>
-              <FormField label="Fin" htmlFor="sprint-end">
+              <FormField label="Fin" htmlFor="sprint-end" error={errors.end}>
                 <Input
                   id="sprint-end"
-                  type="date"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  placeholder="dd/mm/aaaa"
                   value={form.endDate}
-                  onChange={(event) => setForm({ ...form, endDate: event.target.value })}
+                  aria-invalid={errors.end ? true : undefined}
+                  aria-describedby={errors.end ? "sprint-end-error" : undefined}
+                  onChange={(event) => {
+                    setForm({ ...form, endDate: event.target.value })
+                    if (errors.end) setErrors((current) => ({ ...current, end: undefined }))
+                  }}
                 />
               </FormField>
             </div>

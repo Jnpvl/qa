@@ -54,7 +54,7 @@ export function GlossaryContent() {
       <section className="grid gap-2">
         <h2 className="font-medium">Corrida</h2>
         <p className="text-muted-foreground">
-          La ejecución. Eliges casos (de un sprint, de una suite o a mano) y registras el resultado de cada uno: Pasó (Passed), Falló (Failed), Bloqueado (Blocked) u Omitido (Skipped), con un comentario. La barra muestra cuántos ya tienen resultado. Al cerrarla queda como historial; puedes reabrirla.
+          La ejecución. Eliges casos (de un sprint, de una suite o a mano) y registras el resultado de cada uno: Pasó, Falló, Bloqueado u Omitido, con un comentario. La barra muestra cuántos ya tienen resultado. Al cerrarla queda como historial; puedes reabrirla.
         </p>
       </section>
 

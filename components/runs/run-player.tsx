@@ -30,14 +30,41 @@ import type { ResultStatus, TestCase } from "@/lib/types"
 const choices: {
   status: Exclude<ResultStatus, "pendiente">
   label: string
-  hint: string
   active: string
 }[] = [
-  { status: "passed", label: "Pasó", hint: "Passed", active: "border-emerald-600 bg-emerald-50 text-emerald-900" },
-  { status: "failed", label: "Falló", hint: "Failed", active: "border-red-600 bg-red-50 text-red-900" },
-  { status: "blocked", label: "Bloqueado", hint: "Blocked", active: "border-amber-600 bg-amber-50 text-amber-950" },
-  { status: "skipped", label: "Omitido", hint: "Skipped", active: "border-stone-400 bg-stone-100 text-stone-800" },
+  { status: "passed", label: "Pasó", active: "border-emerald-600 bg-emerald-50 text-emerald-900" },
+  { status: "failed", label: "Falló", active: "border-red-600 bg-red-50 text-red-900" },
+  { status: "blocked", label: "Bloqueado", active: "border-amber-600 bg-amber-50 text-amber-950" },
+  { status: "skipped", label: "Omitido", active: "border-stone-400 bg-stone-100 text-stone-800" },
 ]
+
+function shortcutKey(event: KeyboardEvent) {
+  const key = event.key.toLowerCase()
+  if (key === "arrowdown" || key === "arrowup" || key.length === 1) return key
+  if (event.code === "ArrowDown") return "arrowdown"
+  if (event.code === "ArrowUp") return "arrowup"
+  if (/^Key[A-Z]$/.test(event.code)) return event.code.slice(3).toLowerCase()
+  return key
+}
+
+function isTypingTarget(target: EventTarget | null) {
+  return (
+    target instanceof HTMLElement &&
+    (target.isContentEditable ||
+      Boolean(target.closest("input, textarea, select, [contenteditable='true']")))
+  )
+}
+
+function hasOpenDialog() {
+  return Boolean(
+    document.querySelector("[role='dialog'][data-state='open'], [role='alertdialog'][data-state='open']"),
+  )
+}
+
+function pendingCloseCopy(pending: number) {
+  if (pending === 1) return "Queda 1 caso sin resultado. Puedes reabrirla después."
+  return `Quedan ${pending} casos sin resultado. Puedes reabrirla después.`
+}
 
 export function RunPlayer() {
   const router = useRouter()
@@ -102,17 +129,11 @@ export function RunPlayer() {
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       const current = keyboard.current
-      if (!current.run || current.closed || !current.active) return
-      const target = event.target
-      if (
-        target instanceof HTMLElement &&
-        target.closest("input, textarea, select, [contenteditable='true']")
-      ) {
-        return
-      }
+      if (!current.run || !current.active) return
+      if (event.isComposing || isTypingTarget(event.target)) return
       if (event.metaKey || event.ctrlKey || event.altKey || event.repeat) return
-      if (document.querySelector("[role='dialog']")) return
-      const key = event.key.toLowerCase()
+      if (hasOpenDialog()) return
+      const key = shortcutKey(event)
       const index = current.ordered.findIndex((item) => item.id === current.active?.id)
       if (key === "j" || key === "arrowdown") {
         event.preventDefault()
@@ -122,10 +143,21 @@ export function RunPlayer() {
         event.preventDefault()
         const next = current.ordered[Math.max(0, index - 1)]
         if (next) moveTo(next.id)
-      } else if (key === "p") apply("passed")
-      else if (key === "f") apply("failed")
-      else if (key === "b") apply("blocked")
-      else if (key === "o") apply("skipped")
+      } else if (current.closed) {
+        return
+      } else if (key === "p") {
+        event.preventDefault()
+        apply("passed")
+      } else if (key === "f") {
+        event.preventDefault()
+        apply("failed")
+      } else if (key === "b") {
+        event.preventDefault()
+        apply("blocked")
+      } else if (key === "o") {
+        event.preventDefault()
+        apply("skipped")
+      }
     }
     function moveTo(nextId: string) {
       const current = keyboard.current
@@ -188,7 +220,7 @@ export function RunPlayer() {
   }
 
   return (
-    <div className="mx-auto grid w-full max-w-6xl gap-4 p-4 md:p-6">
+    <div className="mx-auto grid w-full min-w-0 max-w-6xl gap-4 p-4 md:p-6">
       <PageHeader
         title={run.name}
         description={
@@ -224,7 +256,7 @@ export function RunPlayer() {
           <span>
             {stats.done} de {stats.total} con resultado
           </span>
-          <span className="text-muted-foreground">
+          <span className="min-w-0 text-muted-foreground">
             {stats.passed} pasó · {stats.failed} falló · {stats.blocked} bloqueado · {stats.skipped} omitido · {stats.pending} pendiente
           </span>
         </div>
@@ -233,7 +265,7 @@ export function RunPlayer() {
           <p className="mt-2 text-sm text-emerald-800">Todos los casos tienen resultado. Ya puedes cerrar la corrida.</p>
         ) : null}
       </div>
-      <div className="grid items-start gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
+      <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
         <div className={cn("rounded-xl border bg-card", !showList && "max-lg:hidden")}>
           <ul className="max-h-[70dvh] overflow-y-auto">
             {ordered.map((item) => {
@@ -292,11 +324,11 @@ export function RunPlayer() {
                   <li key={step.id} className="grid gap-2 rounded-lg border p-3 md:grid-cols-2">
                     <div>
                       <p className="text-xs font-medium text-muted-foreground">Paso {index + 1}</p>
-                      <p className="mt-1 text-sm">{step.action}</p>
+                      <p className="mt-1 break-words text-sm">{step.action}</p>
                     </div>
                     <div>
                       <p className="text-xs font-medium text-muted-foreground">Resultado esperado</p>
-                      <p className="mt-1 text-sm">{step.expected}</p>
+                      <p className="mt-1 break-words text-sm">{step.expected}</p>
                     </div>
                   </li>
                 ))}
@@ -315,7 +347,6 @@ export function RunPlayer() {
                   )}
                 >
                   <span className="block font-medium">{choice.label}</span>
-                  <span className="block text-[11px] opacity-70">{choice.hint}</span>
                 </button>
               ))}
             </div>
@@ -354,7 +385,7 @@ export function RunPlayer() {
             <AlertDialogTitle>¿Cerrar la corrida?</AlertDialogTitle>
             <AlertDialogDescription>
               {stats.pending > 0
-                ? `Quedan ${stats.pending} casos sin resultado. Puedes reabrirla después.`
+                ? pendingCloseCopy(stats.pending)
                 : "Queda como historial. Puedes reabrirla si hace falta corregir un resultado."}
             </AlertDialogDescription>
           </AlertDialogHeader>

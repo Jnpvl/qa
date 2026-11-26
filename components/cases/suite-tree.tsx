@@ -288,9 +288,11 @@ function SuiteDialog({
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [parentId, setParentId] = useState<string>("root")
+  const [moveError, setMoveError] = useState("")
 
   if (open && seen !== key && editor) {
     setSeen(key)
+    setMoveError("")
     if (editor.mode === "rename") {
       setName(editor.suite.name)
       setDescription(editor.suite.description)
@@ -333,8 +335,12 @@ function SuiteDialog({
       } else {
         store.moveSuite(editor.suite.id, parentId === "root" ? null : parentId)
       }
+      setMoveError("")
       onClose()
     } catch (error) {
+      if (editor.mode === "move") {
+        setMoveError(error instanceof Error ? error.message : "No se pudo mover la suite.")
+      }
       reportError(error)
     }
   }
@@ -354,8 +360,18 @@ function SuiteDialog({
           </DialogTitle>
         </DialogHeader>
         {editor?.mode === "move" ? (
-          <FormField label="Nueva ubicación">
-            <EnumSelect value={parentId} onChange={setParentId} options={moveOptions} />
+          <FormField label="Nueva ubicación" htmlFor="move-suite-parent" error={moveError}>
+            <EnumSelect
+              id="move-suite-parent"
+              invalid={Boolean(moveError)}
+              describedBy={moveError ? "move-suite-parent-error" : undefined}
+              value={parentId}
+              onChange={(value) => {
+                setParentId(value)
+                if (moveError) setMoveError("")
+              }}
+              options={moveOptions}
+            />
           </FormField>
         ) : (
           <div className="grid gap-3">

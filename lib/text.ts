@@ -27,15 +27,47 @@ export function isProjectKey(value: string) {
   return /^[A-Z][A-Z0-9]{1,7}$/.test(value)
 }
 
-const dateOnly = /^\d{4}-\d{2}-\d{2}$/
+const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/
+const MONTHS_SHORT = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+
+function isRealDate(year: number, month: number, day: number) {
+  if (month < 1 || month > 12 || day < 1 || day > 31) return false
+  const date = new Date(year, month - 1, day)
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day
+}
+
+function readIsoDate(iso: string) {
+  const match = dateOnly.exec(iso)
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  if (!isRealDate(year, month, day)) return null
+  return { year, month, day }
+}
 
 export function formatDate(iso: string) {
-  const date = new Date(dateOnly.test(iso) ? `${iso}T12:00:00` : iso)
-  return new Intl.DateTimeFormat("es-MX", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(date)
+  const parsed = readIsoDate(iso)
+  if (parsed) return `${parsed.day} ${MONTHS_SHORT[parsed.month - 1]} ${parsed.year}`
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return iso
+  return `${date.getDate()} ${MONTHS_SHORT[date.getMonth()]} ${date.getFullYear()}`
+}
+
+export function formatDateInput(iso: string) {
+  const parsed = readIsoDate(iso)
+  if (!parsed) return ""
+  return `${String(parsed.day).padStart(2, "0")}/${String(parsed.month).padStart(2, "0")}/${parsed.year}`
+}
+
+export function parseDateInput(value: string) {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value.trim())
+  if (!match) return null
+  const day = Number(match[1])
+  const month = Number(match[2])
+  const year = Number(match[3])
+  if (!isRealDate(year, month, day)) return null
+  return `${match[3]}-${match[2]}-${match[1]}`
 }
 
 export function formatDateTime(iso: string) {

@@ -66,13 +66,6 @@ export const resultLabel: Record<ResultStatus, string> = {
   skipped: "Omitido",
 }
 
-export const resultHint: Record<Exclude<ResultStatus, "pendiente">, string> = {
-  passed: "Passed",
-  failed: "Failed",
-  blocked: "Blocked",
-  skipped: "Skipped",
-}
-
 export const sprintStatusLabel: Record<SprintStatus, string> = {
   planeado: "Planeado",
   activo: "Activo",

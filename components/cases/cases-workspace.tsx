@@ -5,7 +5,7 @@ import { useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { MoreHorizontal, Plus, X } from "lucide-react"
 import { toast } from "sonner"
-import { EmptyState, PageHeader, reportError } from "@/components/bits"
+import { EmptyState, FormField, PageHeader, reportError } from "@/components/bits"
 import { SuiteTree } from "@/components/cases/suite-tree"
 import { EnumSelect } from "@/components/enum-select"
 import { MissingProject } from "@/components/missing-project"
@@ -101,6 +101,7 @@ export function CasesWorkspace() {
   const [bulkExecution, setBulkExecution] = useState<ExecutionType>("manual")
   const [bulkSprint, setBulkSprint] = useState("none")
   const [bulkTag, setBulkTag] = useState("")
+  const [moveError, setMoveError] = useState("")
   const shift = useRef(false)
 
   const filterKey = [query, priority, execution, status, sprintId, tag, suiteId, sort.key, sort.dir].join("|")
@@ -217,7 +218,10 @@ export function CasesWorkspace() {
       } else {
         const patch: BulkPatch = {}
         if (bulk === "suite") {
-          if (bulkSuite === "none") throw new Error("Elige una suite.")
+          if (bulkSuite === "none") {
+            setMoveError("Elige una suite.")
+            throw new Error("Elige una suite.")
+          }
           patch.suiteId = bulkSuite
         } else if (bulk === "status") patch.status = bulkStatus
         else if (bulk === "priority") patch.priority = bulkPriority
@@ -235,8 +239,13 @@ export function CasesWorkspace() {
         store.bulkUpdate(ids, patch)
         toast.success("Casos actualizados")
       }
+      setMoveError("")
       setBulk(null)
     } catch (error) {
+      if (bulk === "suite") {
+        const message = error instanceof Error ? error.message : "Elige una suite."
+        setMoveError(message)
+      }
       reportError(error)
     }
   }
@@ -320,7 +329,7 @@ export function CasesWorkspace() {
                     <EnumSelect
                       size="sm"
                       ariaLabel="Filtrar por prioridad"
-                      className="w-36 shrink-0"
+                      className="w-[calc(50%-0.25rem)] min-w-0 sm:w-36"
                       value={priority}
                       onChange={setPriority}
                       options={[
@@ -331,7 +340,7 @@ export function CasesWorkspace() {
                     <EnumSelect
                       size="sm"
                       ariaLabel="Filtrar por ejecución"
-                      className="w-40 shrink-0"
+                      className="w-[calc(50%-0.25rem)] min-w-0 sm:w-40"
                       value={execution}
                       onChange={setExecution}
                       options={[
@@ -345,7 +354,7 @@ export function CasesWorkspace() {
                     <EnumSelect
                       size="sm"
                       ariaLabel="Filtrar por estado"
-                      className="w-36 shrink-0"
+                      className="w-[calc(50%-0.25rem)] min-w-0 sm:w-36"
                       value={status}
                       onChange={setStatus}
                       options={[
@@ -359,7 +368,7 @@ export function CasesWorkspace() {
                     <EnumSelect
                       size="sm"
                       ariaLabel="Filtrar por sprint"
-                      className="w-44 shrink-0"
+                      className="w-[calc(50%-0.25rem)] min-w-0 sm:w-44"
                       value={sprintId}
                       onChange={setSprintId}
                       options={[
@@ -370,7 +379,7 @@ export function CasesWorkspace() {
                     <EnumSelect
                       size="sm"
                       ariaLabel="Filtrar por etiqueta"
-                      className="w-40 shrink-0"
+                      className="w-full min-w-0 sm:w-40"
                       value={tag}
                       onChange={setTag}
                       options={[
@@ -443,15 +452,31 @@ export function CasesWorkspace() {
               ) : null}
 
               {filtered.length === 0 ? (
-                <EmptyState
-                  title="No hay casos con estos filtros"
-                  body="Quita un filtro o crea un caso en la suite que estás viendo."
-                  action={
-                    <Button onClick={() => router.push(`/proyectos/${project.id}/casos/nuevo`)}>
-                      Nuevo caso
-                    </Button>
-                  }
-                />
+                query.trim() || activeFilters.length > 0 ? (
+                  <EmptyState
+                    title="No hay casos con estos filtros"
+                    body="Quita un filtro o crea un caso en la suite que estás viendo."
+                    action={
+                      <Button onClick={() => router.push(`/proyectos/${project.id}/casos/nuevo`)}>
+                        Nuevo caso
+                      </Button>
+                    }
+                  />
+                ) : (
+                  <EmptyState
+                    title={suiteId === "todas" ? "Todavía no hay casos" : "Esta suite aún no tiene casos"}
+                    body={
+                      suiteId === "todas"
+                        ? "Crea el primero para empezar a documentar las pruebas."
+                        : "Crea un caso en esta suite. Si tiene secciones, también puedes revisarlas."
+                    }
+                    action={
+                      <Button onClick={() => router.push(`/proyectos/${project.id}/casos/nuevo`)}>
+                        Nuevo caso
+                      </Button>
+                    }
+                  />
+                )
               ) : (
                 <>
                   <ul className="w-full min-w-0 divide-y overflow-hidden rounded-xl border bg-card md:hidden">
@@ -496,7 +521,7 @@ export function CasesWorkspace() {
                       </li>
                     ))}
                   </ul>
-                  <div className="hidden overflow-x-auto rounded-xl border bg-card md:block">
+                  <div className="hidden min-w-0 overflow-x-auto rounded-xl border bg-card md:block">
                     <table className="w-full min-w-[760px] text-sm">
                       <thead className="border-b bg-muted/50 text-left text-xs text-muted-foreground">
                         <tr>
@@ -643,17 +668,25 @@ export function CasesWorkspace() {
             </DialogTitle>
           </DialogHeader>
           {bulk === "suite" ? (
-            <EnumSelect
-              value={bulkSuite}
-              onChange={setBulkSuite}
-              options={[
-                { value: "none", label: "Elige una suite" },
-                ...flatSuites.map((row) => ({
-                  value: row.suite.id,
-                  label: `${"— ".repeat(row.depth)}${row.suite.name}`,
-                })),
-              ]}
-            />
+            <FormField label="Suite" htmlFor="move-suite" error={moveError}>
+              <EnumSelect
+                id="move-suite"
+                invalid={Boolean(moveError)}
+                describedBy={moveError ? "move-suite-error" : undefined}
+                value={bulkSuite}
+                onChange={(value) => {
+                  setBulkSuite(value)
+                  if (moveError) setMoveError("")
+                }}
+                options={[
+                  { value: "none", label: "Elige una suite" },
+                  ...flatSuites.map((row) => ({
+                    value: row.suite.id,
+                    label: `${"— ".repeat(row.depth)}${row.suite.name}`,
+                  })),
+                ]}
+              />
+            </FormField>
           ) : null}
           {bulk === "status" ? (
             <EnumSelect

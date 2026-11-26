@@ -16,7 +16,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { useStore } from "@/lib/store"
-import { suggestKey } from "@/lib/text"
+import { isProjectKey, suggestKey } from "@/lib/text"
 import type { Project } from "@/lib/types"
 
 export function ProjectFormDialog({
@@ -36,6 +36,7 @@ export function ProjectFormDialog({
   const [key, setKey] = useState("")
   const [description, setDescription] = useState("")
   const [keyTouched, setKeyTouched] = useState(false)
+  const [errors, setErrors] = useState<{ name?: string; key?: string }>({})
 
   if (open && seen !== identity) {
     setSeen(identity)
@@ -43,10 +44,21 @@ export function ProjectFormDialog({
     setKey(project?.key ?? "")
     setDescription(project?.description ?? "")
     setKeyTouched(Boolean(project))
+    setErrors({})
   }
   if (!open && seen) setSeen(null)
 
   function save() {
+    const next: { name?: string; key?: string } = {}
+    if (!name.trim()) next.name = "Escribe el nombre del proyecto."
+    if (!isProjectKey(key.trim().toUpperCase())) {
+      next.key = "La clave usa de 2 a 8 letras o números y empieza con letra."
+    }
+    if (next.name || next.key) {
+      setErrors(next)
+      reportError(new Error(next.name ?? next.key ?? "Revisa los campos."))
+      return
+    }
     try {
       if (project) {
         store.updateProject(project.id, { name, key, description })
@@ -56,8 +68,12 @@ export function ProjectFormDialog({
         toast.success("Proyecto creado")
         router.push(`/proyectos/${created.id}/casos`)
       }
+      setErrors({})
       onOpenChange(false)
     } catch (error) {
+      const message = error instanceof Error ? error.message : "No se pudo completar."
+      if (message.includes("nombre")) setErrors({ name: message })
+      else setErrors({ key: message })
       reportError(error)
     }
   }
@@ -72,14 +88,17 @@ export function ProjectFormDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
-          <FormField label="Nombre" htmlFor="project-name">
+          <FormField label="Nombre" htmlFor="project-name" error={errors.name}>
             <Input
               id="project-name"
               value={name}
+              aria-invalid={errors.name ? true : undefined}
+              aria-describedby={errors.name ? "project-name-error" : undefined}
               onChange={(event) => {
                 const next = event.target.value
                 setName(next)
                 if (!keyTouched) setKey(suggestKey(next))
+                if (errors.name) setErrors((current) => ({ ...current, name: undefined }))
               }}
               placeholder="Tienda en línea"
             />
@@ -87,15 +106,19 @@ export function ProjectFormDialog({
           <FormField
             label="Clave"
             htmlFor="project-key"
+            error={errors.key}
             hint="De 2 a 8 caracteres. Empieza con letra. Si la cambias, cambia el ID visible y el número se conserva."
           >
             <Input
               id="project-key"
               value={key}
               className="font-mono uppercase"
+              aria-invalid={errors.key ? true : undefined}
+              aria-describedby={errors.key ? "project-key-error" : undefined}
               onChange={(event) => {
                 setKeyTouched(true)
                 setKey(event.target.value.toUpperCase())
+                if (errors.key) setErrors((current) => ({ ...current, key: undefined }))
               }}
             />
           </FormField>

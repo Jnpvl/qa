@@ -55,38 +55,44 @@ export function CommandPalette({
             <CommandShortcut>?</CommandShortcut>
           </CommandItem>
           {project ? (
-            <>
-              <CommandItem
-                value="casos de prueba"
-                onSelect={() => go(`/proyectos/${project.id}/casos`)}
-              >
-                Casos
-              </CommandItem>
-              <CommandItem
-                value="sprints milestones"
-                onSelect={() => go(`/proyectos/${project.id}/sprints`)}
-              >
-                Sprints
-              </CommandItem>
-              <CommandItem
-                value="planes"
-                onSelect={() => go(`/proyectos/${project.id}/planes`)}
-              >
-                Planes
-              </CommandItem>
-              <CommandItem
-                value="corridas ejecucion"
-                onSelect={() => go(`/proyectos/${project.id}/corridas`)}
-              >
-                Corridas
-              </CommandItem>
-              <CommandItem
-                value="tablero metricas"
-                onSelect={() => go(`/proyectos/${project.id}/tablero`)}
-              >
-                Tablero
-              </CommandItem>
-            </>
+            <CommandItem
+              value="casos de prueba"
+              onSelect={() => go(`/proyectos/${project.id}/casos`)}
+            >
+              Casos
+            </CommandItem>
+          ) : null}
+          {project ? (
+            <CommandItem
+              value="sprints milestones"
+              onSelect={() => go(`/proyectos/${project.id}/sprints`)}
+            >
+              Sprints
+            </CommandItem>
+          ) : null}
+          {project ? (
+            <CommandItem
+              value="planes"
+              onSelect={() => go(`/proyectos/${project.id}/planes`)}
+            >
+              Planes
+            </CommandItem>
+          ) : null}
+          {project ? (
+            <CommandItem
+              value="corridas ejecucion"
+              onSelect={() => go(`/proyectos/${project.id}/corridas`)}
+            >
+              Corridas
+            </CommandItem>
+          ) : null}
+          {project ? (
+            <CommandItem
+              value="tablero metricas"
+              onSelect={() => go(`/proyectos/${project.id}/tablero`)}
+            >
+              Tablero
+            </CommandItem>
           ) : null}
         </CommandGroup>
         {project ? (
@@ -108,14 +114,14 @@ export function CommandPalette({
         ) : null}
         <CommandSeparator />
         <CommandGroup heading="Casos">
-          {cases.map((item) => {
+          {cases.flatMap((item) => {
             const owner = data.projects.find((entry) => entry.id === item.projectId)
-            if (!owner) return null
+            if (!owner) return []
             const code = caseCode(owner.key, item.number)
             return (
               <CommandItem
                 key={item.id}
-                value={`${code} ${item.title} ${item.tags.join(" ")}`}
+                value={`${code} ${item.title} ${item.tags.join(" ")} ${item.id}`}
                 onSelect={() =>
                   go(`/proyectos/${item.projectId}/casos/${item.id}`)
                 }

@@ -15,6 +15,8 @@ export function EnumSelect<T extends string>({
   size = "default",
   id,
   ariaLabel,
+  invalid,
+  describedBy,
 }: {
   value: T
   onChange: (value: T) => void
@@ -23,10 +25,19 @@ export function EnumSelect<T extends string>({
   size?: "sm" | "default"
   id?: string
   ariaLabel?: string
+  invalid?: boolean
+  describedBy?: string
 }) {
   return (
     <Select value={value} onValueChange={(next) => onChange(next as T)}>
-      <SelectTrigger id={id} size={size} className={cn("w-full", className)} aria-label={ariaLabel}>
+      <SelectTrigger
+        id={id}
+        size={size}
+        className={cn("w-full", className)}
+        aria-label={ariaLabel}
+        aria-invalid={invalid || undefined}
+        aria-describedby={describedBy}
+      >
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
