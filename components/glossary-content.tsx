@@ -68,7 +68,7 @@ export function GlossaryContent() {
       <section className="grid gap-2">
         <h2 className="font-medium">Datos</h2>
         <p className="text-muted-foreground">
-          Desde Casos exportas CSV o JSON e importas un CSV después de mapear las columnas. En Proyectos, Respaldar descarga todo el espacio de trabajo y Restaurar lo vuelve a cargar sin borrar lo que el archivo no trae: si el archivo es de una versión anterior, se completa solo.
+          Desde Casos exportas CSV o JSON e importas un CSV después de mapear las columnas. En Proyectos, Respaldar descarga todo el espacio de trabajo. Restaurar reemplaza todo lo que hay ahora por el contenido del archivo; antes de confirmar puedes descargar el respaldo actual. Si el archivo es de una versión anterior, se completa solo.
         </p>
       </section>
 

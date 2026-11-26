@@ -152,6 +152,27 @@ const actions = {
     next.initialized = true
     commitState(next)
   },
+  addDemo() {
+    const state = current()
+    if (state.projects.some((item) => item.sample || item.id === "prj_tienda")) {
+      throw new Error("El proyecto de ejemplo ya está en la lista.")
+    }
+    const demo = structuredClone(seedData)
+    const sampleKey = demo.projects[0]?.key
+    if (sampleKey && state.projects.some((item) => item.key === sampleKey)) {
+      throw new Error("Ya hay un proyecto con la clave DEMO. Cámbiala antes de cargar el ejemplo.")
+    }
+    update((draft) => {
+      draft.projects.push(...demo.projects)
+      draft.sprints.push(...demo.sprints)
+      draft.suites.push(...demo.suites)
+      draft.cases.push(...demo.cases)
+      draft.runs.push(...demo.runs)
+      draft.plans.push(...demo.plans)
+      draft.defects.push(...demo.defects)
+      draft.members.push(...demo.members)
+    })
+  },
   removeSample() {
     update((draft) => {
       const sampleIds = new Set(

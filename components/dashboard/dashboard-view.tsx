@@ -30,10 +30,19 @@ export function DashboardView() {
         : [],
     [data, project],
   )
-  const initial = sprints.find((item) => item.status === "activo")?.id ?? sprints[0]?.id ?? "todos"
-  const [sprintId, setSprintId] = useState(initial)
+  const activeWithCases = sprints.find(
+    (item) =>
+      item.status === "activo" &&
+      data?.cases.some((testCase) => testCase.projectId === project?.id && testCase.sprintIds.includes(item.id)),
+  )
+  const [sprintId, setSprintId] = useState(activeWithCases?.id ?? "todos")
+  const [sprintReady, setSprintReady] = useState(Boolean(data && project))
   const [planId, setPlanId] = useState("todos")
   const [assigneeId, setAssigneeId] = useState("todos")
+  if (data && project && !sprintReady) {
+    setSprintReady(true)
+    if (activeWithCases) setSprintId(activeWithCases.id)
+  }
 
   if (!data || !project) return <MissingProject />
 

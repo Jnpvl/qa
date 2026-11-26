@@ -27,7 +27,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { useStore } from "@/lib/store"
 import { downloadText } from "@/lib/csv"
-import { countLabel, normalize } from "@/lib/text"
+import { countLabel, localDateStamp, normalize } from "@/lib/text"
 import type { Project } from "@/lib/types"
 
 export function ProjectList() {
@@ -39,6 +39,7 @@ export function ProjectList() {
   const [editing, setEditing] = useState<Project | null>(null)
   const [removing, setRemoving] = useState<Project | null>(null)
   const [dropSample, setDropSample] = useState(false)
+  const [pendingRestore, setPendingRestore] = useState<string | null>(null)
 
   const projects = useMemo(() => {
     if (!data) return []
@@ -76,10 +77,7 @@ export function ProjectList() {
                   if (!file) return
                   file
                     .text()
-                    .then((text) => {
-                      store.replaceState(JSON.parse(text))
-                      toast.success("Respaldo restaurado")
-                    })
+                    .then((text) => setPendingRestore(text))
                     .catch(reportError)
                 }}
               />
@@ -91,7 +89,21 @@ export function ProjectList() {
               <Button variant="outline" onClick={() => setDropSample(true)}>
                 Quitar ejemplo
               </Button>
-            ) : null}
+            ) : (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  try {
+                    store.addDemo()
+                    toast.success("Proyecto de ejemplo agregado")
+                  } catch (error) {
+                    reportError(error)
+                  }
+                }}
+              >
+                Cargar demo
+              </Button>
+            )}
             <Button onClick={() => setCreating(true)}>
               <Plus />
               Nuevo proyecto
@@ -213,6 +225,46 @@ export function ProjectList() {
         }}
         project={editing ?? undefined}
       />
+      <AlertDialog open={pendingRestore !== null} onOpenChange={(open) => !open && setPendingRestore(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Reemplazar todo el espacio?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Restaurar borra los proyectos, casos y corridas de este navegador y deja solo lo que viene en el archivo. Puedes descargar el respaldo actual antes de continuar.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <Button
+              variant="outline"
+              onClick={() =>
+                downloadText(
+                  `casos-respaldo-${localDateStamp()}.json`,
+                  JSON.stringify(data, null, 2),
+                  "application/json",
+                )
+              }
+            >
+              Descargar respaldo actual
+            </Button>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (!pendingRestore) return
+                try {
+                  store.replaceState(JSON.parse(pendingRestore))
+                  setPendingRestore(null)
+                  toast.success("Respaldo restaurado")
+                } catch (error) {
+                  reportError(error)
+                }
+              }}
+            >
+              Reemplazar todo
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog open={dropSample} onOpenChange={setDropSample}>
         <AlertDialogContent>
           <AlertDialogHeader>

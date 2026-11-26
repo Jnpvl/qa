@@ -53,6 +53,7 @@ import {
 import { backupReminder, markBackup, readBackupMeta } from "@/lib/backup"
 import { downloadText } from "@/lib/csv"
 import { product } from "@/lib/product"
+import { localDateStamp } from "@/lib/text"
 import { useStore } from "@/lib/store"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -110,7 +111,7 @@ function ShellFrame({ children }: { children: ReactNode }) {
   function backup() {
     if (!data) return
     downloadText(
-      `casos-respaldo-${new Date().toISOString().slice(0, 10)}.json`,
+      `casos-respaldo-${localDateStamp()}.json`,
       JSON.stringify(data, null, 2),
       "application/json",
     )

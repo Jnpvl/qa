@@ -29,6 +29,11 @@ export function RunReport() {
 
   function exportCsv() {
     const rows = [
+      ["Entorno", run!.environment || "Sin entorno"],
+      ["Versión", run!.build || "Sin versión"],
+      ["Aprobado", stats.passRate === null ? "Sin aprobación" : `${stats.passRate}%`],
+      ["Avance", `${stats.percent}%`],
+      [],
       ["Caso", "Título", "Resultado", "Responsable", "Minutos", "Comentario", "Defectos"],
       ...run!.results.map((result) => {
         const testCase = data!.cases.find((item) => item.id === result.caseId)
