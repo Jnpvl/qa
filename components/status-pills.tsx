@@ -29,7 +29,7 @@ export function ExecutionBadge({ type }: { type: ExecutionType }) {
 
 const statusClass: Record<CaseStatus, string> = {
   borrador: "border-border bg-background text-muted-foreground",
-  listo: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  activo: "border-emerald-200 bg-emerald-50 text-emerald-800",
   obsoleto: "border-transparent bg-muted text-muted-foreground line-through",
 }
 

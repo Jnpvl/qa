@@ -10,19 +10,27 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react"
+import { migrate } from "@/lib/migrate"
 import { readState, writeState } from "@/lib/storage"
 import { seedData } from "@/lib/seed"
 import { wouldCycle } from "@/lib/suites"
-import { createId, isProjectKey, normalize } from "@/lib/text"
+import { caseCode, createId, isProjectKey, normalize } from "@/lib/text"
 import type {
+  Attachment,
   BulkPatch,
   CaseDraft,
+  Defect,
+  DefectStatus,
   DemoState,
+  Member,
   Plan,
   Project,
   ResultStatus,
+  RunResult,
+  Severity,
   Sprint,
   SprintStatus,
+  StepResult,
   Suite,
   TestCase,
   TestRun,
@@ -79,6 +87,37 @@ function nextCaseNumber(state: DemoState, projectId: string) {
     .filter((item) => item.projectId === projectId)
     .map((item) => item.number)
   return (numbers.length ? Math.max(...numbers) : 0) + 1
+}
+
+function blankResult(caseId: string): RunResult {
+  return {
+    caseId,
+    status: "pendiente",
+    comment: "",
+    assigneeId: null,
+    stepResults: [],
+    attachment: null,
+    minutes: null,
+  }
+}
+
+function changeSummary(before: TestCase, draft: CaseDraft, steps: TestCase["steps"]) {
+  const bits: string[] = []
+  if (before.title !== draft.title.trim()) bits.push("el título")
+  if (before.preconditions !== draft.preconditions.trim()) bits.push("las precondiciones")
+  if (JSON.stringify(before.steps) !== JSON.stringify(steps)) bits.push("los pasos")
+  if (before.priority !== draft.priority) bits.push("la prioridad")
+  if (before.severity !== draft.severity) bits.push("la severidad")
+  if (before.kind !== draft.kind) bits.push("el tipo")
+  if (before.status !== draft.status) bits.push("el estado")
+  if (before.executionType !== draft.executionType) bits.push("el tipo de ejecución")
+  if (before.suiteId !== draft.suiteId) bits.push("la suite")
+  if (JSON.stringify(before.tags) !== JSON.stringify(uniqueTags(draft.tags))) bits.push("las etiquetas")
+  if (JSON.stringify([...before.sprintIds].sort()) !== JSON.stringify([...new Set(draft.sprintIds)].sort())) {
+    bits.push("los sprints")
+  }
+  if (!bits.length) return null
+  return `Cambió ${bits.join(", ")}.`
 }
 
 function assertKey(state: DemoState, key: string, ignoreId?: string) {
@@ -139,6 +178,8 @@ const actions = {
       draft.cases = draft.cases.filter((item) => item.projectId !== id)
       draft.runs = draft.runs.filter((item) => item.projectId !== id)
       draft.plans = draft.plans.filter((item) => item.projectId !== id)
+      draft.defects = draft.defects.filter((item) => item.projectId !== id)
+      draft.members = draft.members.filter((item) => item.projectId !== id)
     })
   },
   createSprint(input: {
@@ -326,6 +367,14 @@ const actions = {
       tags: uniqueTags(draft.tags),
       status: draft.status,
       sprintIds: [...new Set(draft.sprintIds)],
+      attachments: [],
+      changes: [
+        {
+          id: createId("chg"),
+          at: new Date().toISOString(),
+          summary: "Caso creado.",
+        },
+      ],
       updatedAt: new Date().toISOString(),
     }
     update((next) => {
@@ -343,13 +392,15 @@ const actions = {
     if (!suite || suite.projectId !== existing.projectId) {
       throw new Error("Elige una suite del mismo proyecto.")
     }
+    const steps = cleanSteps(draft.steps)
+    const summary = changeSummary(existing, { ...draft, title }, steps)
     update((next) => {
       const item = next.cases.find((candidate) => candidate.id === id)
       if (!item) return
       item.suiteId = draft.suiteId
       item.title = title
       item.preconditions = draft.preconditions.trim()
-      item.steps = cleanSteps(draft.steps)
+      item.steps = steps
       item.priority = draft.priority
       item.severity = draft.severity
       item.kind = draft.kind
@@ -358,6 +409,9 @@ const actions = {
       item.status = draft.status
       item.sprintIds = [...new Set(draft.sprintIds)]
       item.updatedAt = new Date().toISOString()
+      if (summary) {
+        item.changes.push({ id: createId("chg"), at: item.updatedAt, summary })
+      }
     })
   },
   deleteCases(ids: string[]) {
@@ -367,12 +421,17 @@ const actions = {
       for (const run of draft.runs) {
         run.results = run.results.filter((result) => !drop.has(result.caseId))
       }
+      for (const plan of draft.plans) {
+        plan.caseIds = plan.caseIds.filter((id) => !drop.has(id))
+      }
+      draft.defects = draft.defects.filter((item) => !drop.has(item.caseId))
     })
   },
   duplicateCase(id: string) {
     const state = current()
     const source = state.cases.find((item) => item.id === id)
     if (!source) throw new Error("No encontramos el caso.")
+    const project = state.projects.find((item) => item.id === source.projectId)
     const copy: TestCase = {
       ...structuredClone(source),
       id: createId("cse"),
@@ -381,6 +440,14 @@ const actions = {
       status: "borrador",
       updatedAt: new Date().toISOString(),
       steps: source.steps.map((step) => ({ ...step, id: createId("st") })),
+      attachments: source.attachments.map((item) => ({ ...item, id: createId("att") })),
+      changes: [
+        {
+          id: createId("chg"),
+          at: new Date().toISOString(),
+          summary: `Clonado de ${caseCode(project?.key ?? "CASO", source.number)}.`,
+        },
+      ],
     }
     update((draft) => {
       draft.cases.push(copy)
@@ -436,6 +503,8 @@ const actions = {
     sprintId: string | null
     name: string
     description: string
+    caseIds?: string[]
+    suiteIds?: string[]
   }) {
     const name = input.name.trim()
     if (!name) throw new Error("Escribe el nombre del plan.")
@@ -445,6 +514,8 @@ const actions = {
       sprintId: input.sprintId,
       name,
       description: input.description.trim(),
+      caseIds: [...new Set(input.caseIds ?? [])],
+      suiteIds: [...new Set(input.suiteIds ?? [])],
       createdAt: new Date().toISOString(),
     }
     update((draft) => {
@@ -454,7 +525,13 @@ const actions = {
   },
   updatePlan(
     id: string,
-    patch: { sprintId: string | null; name: string; description: string },
+    patch: {
+      sprintId: string | null
+      name: string
+      description: string
+      caseIds?: string[]
+      suiteIds?: string[]
+    },
   ) {
     const name = patch.name.trim()
     if (!name) throw new Error("Escribe el nombre del plan.")
@@ -464,6 +541,8 @@ const actions = {
       plan.name = name
       plan.sprintId = patch.sprintId
       plan.description = patch.description.trim()
+      if (patch.caseIds) plan.caseIds = [...new Set(patch.caseIds)]
+      if (patch.suiteIds) plan.suiteIds = [...new Set(patch.suiteIds)]
     })
   },
   deletePlan(id: string) {
@@ -480,6 +559,9 @@ const actions = {
     sprintId: string | null
     planId: string | null
     caseIds: string[]
+    assigneeId?: string | null
+    environment?: string
+    build?: string
   }) {
     const name = input.name.trim()
     if (!name) throw new Error("Escribe el nombre de la corrida.")
@@ -496,14 +578,13 @@ const actions = {
       sprintId: input.sprintId,
       planId: input.planId,
       name,
+      assigneeId: input.assigneeId ?? null,
+      environment: input.environment?.trim() ?? "",
+      build: input.build?.trim() ?? "",
       createdAt: new Date().toISOString(),
       closedAt: null,
       status: "en_progreso",
-      results: valid.map((caseId) => ({
-        caseId,
-        status: "pendiente",
-        comment: "",
-      })),
+      results: valid.map((caseId) => blankResult(caseId)),
     }
     update((draft) => {
       draft.runs.push(run)
@@ -512,22 +593,41 @@ const actions = {
   },
   updateRunMeta(
     id: string,
-    patch: { name: string; sprintId: string | null; planId: string | null },
+    patch: {
+      name?: string
+      sprintId?: string | null
+      planId?: string | null
+      assigneeId?: string | null
+      environment?: string
+      build?: string
+    },
   ) {
-    const name = patch.name.trim()
-    if (!name) throw new Error("Escribe el nombre de la corrida.")
     update((draft) => {
       const run = draft.runs.find((item) => item.id === id)
       if (!run) return
-      run.name = name
-      run.sprintId = patch.sprintId
-      run.planId = patch.planId
+      if (patch.name !== undefined) {
+        const name = patch.name.trim()
+        if (!name) throw new Error("Escribe el nombre de la corrida.")
+        run.name = name
+      }
+      if (patch.sprintId !== undefined) run.sprintId = patch.sprintId
+      if (patch.planId !== undefined) run.planId = patch.planId
+      if (patch.assigneeId !== undefined) run.assigneeId = patch.assigneeId
+      if (patch.environment !== undefined) run.environment = patch.environment.trim()
+      if (patch.build !== undefined) run.build = patch.build.trim()
     })
   },
   setRunResult(
     runId: string,
     caseId: string,
-    patch: { status?: ResultStatus; comment?: string },
+    patch: {
+      status?: ResultStatus
+      comment?: string
+      assigneeId?: string | null
+      stepResults?: StepResult[]
+      attachment?: Attachment | null
+      minutes?: number | null
+    },
   ) {
     const state = current()
     const run = state.runs.find((item) => item.id === runId)
@@ -538,6 +638,10 @@ const actions = {
       if (!target || target.status === "cerrada" || !result) return
       if (patch.status) result.status = patch.status
       if (patch.comment !== undefined) result.comment = patch.comment
+      if (patch.assigneeId !== undefined) result.assigneeId = patch.assigneeId
+      if (patch.stepResults) result.stepResults = patch.stepResults
+      if (patch.attachment !== undefined) result.attachment = patch.attachment
+      if (patch.minutes !== undefined) result.minutes = patch.minutes
     })
     return true
   },
@@ -561,6 +665,136 @@ const actions = {
     update((draft) => {
       draft.runs = draft.runs.filter((item) => item.id !== id)
     })
+  },
+  setAutoAdvance(value: boolean) {
+    update((draft) => {
+      draft.autoAdvance = value
+    })
+  },
+  addCaseAttachment(caseId: string, file: Attachment) {
+    update((draft) => {
+      const item = draft.cases.find((candidate) => candidate.id === caseId)
+      if (!item) return
+      item.attachments.push(file)
+      item.updatedAt = new Date().toISOString()
+      item.changes.push({
+        id: createId("chg"),
+        at: item.updatedAt,
+        summary: `Adjuntó ${file.name}.`,
+      })
+    })
+  },
+  removeCaseAttachment(caseId: string, attachmentId: string) {
+    update((draft) => {
+      const item = draft.cases.find((candidate) => candidate.id === caseId)
+      if (!item) return
+      const file = item.attachments.find((candidate) => candidate.id === attachmentId)
+      item.attachments = item.attachments.filter((candidate) => candidate.id !== attachmentId)
+      item.updatedAt = new Date().toISOString()
+      item.changes.push({
+        id: createId("chg"),
+        at: item.updatedAt,
+        summary: `Quitó el adjunto ${file?.name ?? ""}.`.trim(),
+      })
+    })
+  },
+  createMember(input: { projectId: string; name: string; role: string }) {
+    const name = input.name.trim()
+    if (!name) throw new Error("Escribe el nombre.")
+    const member: Member = {
+      id: createId("mem"),
+      projectId: input.projectId,
+      name,
+      role: input.role.trim(),
+    }
+    update((draft) => {
+      draft.members.push(member)
+    })
+    return member
+  },
+  updateMember(id: string, patch: { name: string; role: string }) {
+    const name = patch.name.trim()
+    if (!name) throw new Error("Escribe el nombre.")
+    update((draft) => {
+      const member = draft.members.find((item) => item.id === id)
+      if (!member) return
+      member.name = name
+      member.role = patch.role.trim()
+    })
+  },
+  deleteMember(id: string) {
+    update((draft) => {
+      draft.members = draft.members.filter((item) => item.id !== id)
+      for (const run of draft.runs) {
+        if (run.assigneeId === id) run.assigneeId = null
+        for (const result of run.results) {
+          if (result.assigneeId === id) result.assigneeId = null
+        }
+      }
+    })
+  },
+  createDefect(input: {
+    projectId: string
+    caseId: string
+    runId: string | null
+    title: string
+    severity: Severity
+    externalUrl: string
+  }) {
+    const title = input.title.trim()
+    if (!title) throw new Error("Escribe el título del defecto.")
+    const defect: Defect = {
+      id: createId("def"),
+      projectId: input.projectId,
+      caseId: input.caseId,
+      runId: input.runId,
+      title,
+      severity: input.severity,
+      status: "abierto",
+      externalUrl: input.externalUrl.trim(),
+      createdAt: new Date().toISOString(),
+    }
+    update((draft) => {
+      draft.defects.push(defect)
+      const item = draft.cases.find((candidate) => candidate.id === input.caseId)
+      if (item) {
+        item.changes.push({
+          id: createId("chg"),
+          at: defect.createdAt,
+          summary: `Registró el defecto «${title}».`,
+        })
+      }
+    })
+    return defect
+  },
+  updateDefect(
+    id: string,
+    patch: { title?: string; severity?: Severity; status?: DefectStatus; externalUrl?: string },
+  ) {
+    update((draft) => {
+      const defect = draft.defects.find((item) => item.id === id)
+      if (!defect) return
+      if (patch.title !== undefined) {
+        const title = patch.title.trim()
+        if (!title) throw new Error("Escribe el título del defecto.")
+        defect.title = title
+      }
+      if (patch.severity) defect.severity = patch.severity
+      if (patch.status) defect.status = patch.status
+      if (patch.externalUrl !== undefined) defect.externalUrl = patch.externalUrl.trim()
+    })
+  },
+  deleteDefect(id: string) {
+    update((draft) => {
+      draft.defects = draft.defects.filter((item) => item.id !== id)
+    })
+  },
+  replaceState(raw: unknown) {
+    const next = migrate(raw)
+    if (!next) throw new Error("Ese archivo no es un respaldo de Casos.")
+    snapshot = next
+    writeState(next)
+    emit()
   },
 }
 

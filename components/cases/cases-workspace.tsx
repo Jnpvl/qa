@@ -96,7 +96,7 @@ export function CasesWorkspace() {
   const [treeOpen, setTreeOpen] = useState(false)
   const [bulk, setBulk] = useState<BulkMode>(null)
   const [bulkSuite, setBulkSuite] = useState("none")
-  const [bulkStatus, setBulkStatus] = useState<CaseStatus>("listo")
+  const [bulkStatus, setBulkStatus] = useState<CaseStatus>("activo")
   const [bulkPriority, setBulkPriority] = useState<Priority>("alta")
   const [bulkExecution, setBulkExecution] = useState<ExecutionType>("manual")
   const [bulkSprint, setBulkSprint] = useState("none")

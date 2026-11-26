@@ -1,6 +1,7 @@
 import type {
   CaseKind,
   CaseStatus,
+  DefectStatus,
   ExecutionType,
   Priority,
   ResultStatus,
@@ -52,11 +53,11 @@ export const executionTypes: ExecutionType[] = ["manual", "automatizado", "ambos
 
 export const caseStatusLabel: Record<CaseStatus, string> = {
   borrador: "Borrador",
-  listo: "Listo",
+  activo: "Activo",
   obsoleto: "Obsoleto",
 }
 
-export const caseStatuses: CaseStatus[] = ["borrador", "listo", "obsoleto"]
+export const caseStatuses: CaseStatus[] = ["borrador", "activo", "obsoleto"]
 
 export const resultLabel: Record<ResultStatus, string> = {
   pendiente: "Pendiente",
@@ -73,3 +74,12 @@ export const sprintStatusLabel: Record<SprintStatus, string> = {
 }
 
 export const sprintStatuses: SprintStatus[] = ["planeado", "activo", "cerrado"]
+
+export const defectStatusLabel: Record<DefectStatus, string> = {
+  abierto: "Abierto",
+  en_progreso: "En progreso",
+  resuelto: "Resuelto",
+  cerrado: "Cerrado",
+}
+
+export const defectStatuses: DefectStatus[] = ["abierto", "en_progreso", "resuelto", "cerrado"]

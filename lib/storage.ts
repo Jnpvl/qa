@@ -1,3 +1,4 @@
+import { migrate } from "@/lib/migrate"
 import { product } from "@/lib/product"
 import { seedData } from "@/lib/seed"
 import type { DemoState } from "@/lib/types"
@@ -13,19 +14,11 @@ export function readState(): DemoState {
   try {
     const raw = window.localStorage.getItem(product.storageKey)
     if (!raw) return structuredClone(seedData)
-    const parsed = JSON.parse(raw) as Partial<DemoState>
-    if (
-      parsed.version !== 1 ||
-      !Array.isArray(parsed.projects) ||
-      !Array.isArray(parsed.suites) ||
-      !Array.isArray(parsed.cases) ||
-      !Array.isArray(parsed.sprints) ||
-      !Array.isArray(parsed.runs) ||
-      !Array.isArray(parsed.plans)
-    ) {
-      return structuredClone(seedData)
-    }
-    return parsed as DemoState
+    const parsed = JSON.parse(raw) as { version?: number }
+    const migrated = migrate(parsed)
+    if (!migrated) return structuredClone(seedData)
+    if (parsed.version !== 2) writeState(migrated)
+    return migrated
   } catch {
     return structuredClone(seedData)
   }
