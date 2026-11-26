@@ -350,6 +350,70 @@ const actions = {
       }
     })
   },
+  repairImportedSuitePaths(projectId: string) {
+    const candidates = current().suites.filter(
+      (suite) => suite.projectId === projectId && suite.parentId === null && suite.name.includes(" > "),
+    )
+    if (candidates.length === 0) return { suites: 0, cases: 0 }
+    let movedCases = 0
+    update((draft) => {
+      const candidateIds = new Set(candidates.map((suite) => suite.id))
+      for (const candidateId of candidateIds) {
+        const legacy = draft.suites.find((suite) => suite.id === candidateId)
+        if (!legacy) continue
+        const segments = legacy.name.split(/\s*>\s*/).map((part) => part.trim()).filter(Boolean)
+        if (segments.length < 2) continue
+        let parentId: string | null = null
+        for (const segment of segments.slice(0, -1)) {
+          let parent = draft.suites.find(
+            (suite) => suite.id !== legacy.id && suite.projectId === projectId && suite.parentId === parentId && normalize(suite.name) === normalize(segment),
+          )
+          if (!parent) {
+            const siblings = draft.suites.filter((suite) => suite.projectId === projectId && suite.parentId === parentId)
+            parent = {
+              id: createId("sui"),
+              projectId,
+              parentId,
+              name: segment,
+              description: "",
+              order: siblings.reduce((max, suite) => Math.max(max, suite.order + 1), 0),
+            }
+            draft.suites.push(parent)
+          }
+          parentId = parent.id
+        }
+        const leafName = segments[segments.length - 1]
+        const target = draft.suites.find(
+          (suite) => suite.id !== legacy.id && suite.projectId === projectId && suite.parentId === parentId && normalize(suite.name) === normalize(leafName),
+        )
+        if (target) {
+          for (const child of draft.suites) {
+            if (child.parentId === legacy.id) child.parentId = target.id
+          }
+          for (const item of draft.cases) {
+            if (item.suiteId !== legacy.id) continue
+            item.suiteId = target.id
+            item.idPrefix = effectiveSuitePrefix(draft.suites, target.id)
+            item.updatedAt = new Date().toISOString()
+            item.changes.push({ id: createId("chg"), at: item.updatedAt, summary: `Suite reorganizada a ${[...segments].join(" / ")}.` })
+            movedCases += 1
+          }
+          draft.suites = draft.suites.filter((suite) => suite.id !== legacy.id)
+        } else {
+          legacy.name = leafName
+          legacy.parentId = parentId
+          const siblings = draft.suites.filter((suite) => suite.projectId === projectId && suite.parentId === parentId && suite.id !== legacy.id)
+          legacy.order = siblings.reduce((max, suite) => Math.max(max, suite.order + 1), 0)
+          for (const item of draft.cases) {
+            if (item.suiteId !== legacy.id) continue
+            item.idPrefix = effectiveSuitePrefix(draft.suites, legacy.id)
+            movedCases += 1
+          }
+        }
+      }
+    })
+    return { suites: candidates.length, cases: movedCases }
+  },
   deleteSuite(id: string) {
     const state = current()
     if (state.suites.some((item) => item.parentId === id)) {

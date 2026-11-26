@@ -26,7 +26,7 @@ import {
   type ImportField,
 } from "@/lib/case-import"
 import { useStore } from "@/lib/store"
-import { caseCode, createId } from "@/lib/text"
+import { caseCode, createId, normalize } from "@/lib/text"
 import { flattenSuites } from "@/lib/suites"
 import type { CaseDraft, TestCase } from "@/lib/types"
 
@@ -122,11 +122,18 @@ export function CaseImportDialog({
         const title = row[titleIndex]?.trim()
         if (!title) continue
         const suiteName = column("suite") >= 0 ? row[column("suite")]?.trim() : ""
-        let suiteId = projectSuites.find((item) => item.name.toLowerCase() === suiteName.toLowerCase())?.id
-        if (!suiteId && suiteName) {
-          const suite = store.createSuite({ projectId, parentId: null, name: suiteName, description: "" })
-          suiteId = suite.id
-          projectSuites.push(suite)
+        let suiteId: string | undefined
+        if (suiteName) {
+          let parentId: string | null = null
+          for (const segment of suiteName.split(/\s*>\s*/).map((part) => part.trim()).filter(Boolean)) {
+            let suite = projectSuites.find((item) => item.parentId === parentId && normalize(item.name) === normalize(segment))
+            if (!suite) {
+              suite = store.createSuite({ projectId, parentId, name: segment, description: "" })
+              projectSuites.push(suite)
+            }
+            parentId = suite.id
+          }
+          suiteId = parentId ?? undefined
         }
         if (!suiteId) {
           if (!defaultSuiteId) {

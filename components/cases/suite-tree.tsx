@@ -1,10 +1,10 @@
 "use client"
 
 import { useState } from "react"
+import { toast } from "sonner"
 import {
   ChevronDown,
   ChevronRight,
-  FolderPlus,
   MoreHorizontal,
   Plus,
 } from "lucide-react"
@@ -60,6 +60,7 @@ export function SuiteTree({
   const projectCases = cases.filter((item) => item.projectId === projectId)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [removing, setRemoving] = useState<Suite | null>(null)
+  const [repairOpen, setRepairOpen] = useState(false)
   const [editor, setEditor] = useState<
     | { mode: "create"; parentId: string | null }
     | { mode: "rename"; suite: Suite }
@@ -68,6 +69,7 @@ export function SuiteTree({
   >(null)
 
   const roots = childSuites(projectSuites, projectId, null)
+  const legacyPaths = roots.filter((suite) => suite.name.includes(" > "))
 
   return (
     <div className="grid gap-2 p-3">
@@ -127,15 +129,14 @@ export function SuiteTree({
           />
         ))
       )}
-      <Button
-        variant="outline"
-        size="sm"
-        className="mt-1"
-        onClick={() => setEditor({ mode: "create", parentId: null })}
-      >
-        <FolderPlus />
-        Nueva suite
-      </Button>
+      {legacyPaths.length > 0 ? (
+        <div className="grid gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+          <p>Hay {legacyPaths.length} suite(s) importadas como ruta completa.</p>
+          <Button variant="outline" size="sm" onClick={() => setRepairOpen(true)}>
+            Reparar jerarquía
+          </Button>
+        </div>
+      ) : null}
       <SuiteDialog
         projectId={projectId}
         suites={projectSuites}
@@ -167,6 +168,32 @@ export function SuiteTree({
               }}
             >
               Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={repairOpen} onOpenChange={setRepairOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reparar suites importadas</AlertDialogTitle>
+            <AlertDialogDescription>
+              Las rutas se convertirán en suites y subsecciones reales. Los casos se conservarán y se moverán a su ubicación; sus IDs generados pueden cambiar al prefijo correcto. Los IDs personalizados se mantienen.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                try {
+                  const result = store.repairImportedSuitePaths(projectId)
+                  toast.success(`Jerarquía reparada: ${result.suites} suites y ${result.cases} casos reorganizados.`)
+                  setRepairOpen(false)
+                } catch (error) {
+                  reportError(error)
+                }
+              }}
+            >
+              Reparar jerarquía
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
