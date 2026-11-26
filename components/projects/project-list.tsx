@@ -26,8 +26,8 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { useStore } from "@/lib/store"
-import { downloadText } from "@/lib/csv"
-import { countLabel, localDateStamp, normalize } from "@/lib/text"
+import { downloadWorkspaceBackup } from "@/lib/backup"
+import { countLabel, normalize } from "@/lib/text"
 import type { Project } from "@/lib/types"
 
 export function ProjectList() {
@@ -61,7 +61,7 @@ export function ProjectList() {
           <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
-              onClick={() => downloadText("casos-respaldo.json", JSON.stringify(data, null, 2), "application/json")}
+              onClick={() => downloadWorkspaceBackup(data)}
             >
               Respaldar
             </Button>
@@ -237,13 +237,7 @@ export function ProjectList() {
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <Button
               variant="outline"
-              onClick={() =>
-                downloadText(
-                  `casos-respaldo-${localDateStamp()}.json`,
-                  JSON.stringify(data, null, 2),
-                  "application/json",
-                )
-              }
+              onClick={() => downloadWorkspaceBackup(data)}
             >
               Descargar respaldo actual
             </Button>

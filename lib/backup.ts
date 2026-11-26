@@ -1,3 +1,6 @@
+import { downloadText } from "@/lib/csv"
+import { localDateStamp } from "@/lib/text"
+
 const key = "casos.backup.meta"
 
 export interface BackupMeta {
@@ -41,6 +44,15 @@ export function noteEdit() {
 export function markBackup() {
   if (typeof window === "undefined") return
   writeMeta({ at: Date.now(), changes: 0, since: null })
+}
+
+export function downloadWorkspaceBackup(data: unknown) {
+  downloadText(
+    `casos-respaldo-${localDateStamp()}.json`,
+    JSON.stringify(data, null, 2),
+    "application/json",
+  )
+  markBackup()
 }
 
 export function backupReminder(meta: BackupMeta) {

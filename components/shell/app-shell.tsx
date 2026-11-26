@@ -50,10 +50,8 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
-import { backupReminder, markBackup, readBackupMeta } from "@/lib/backup"
-import { downloadText } from "@/lib/csv"
+import { backupReminder, downloadWorkspaceBackup, readBackupMeta } from "@/lib/backup"
 import { product } from "@/lib/product"
-import { localDateStamp } from "@/lib/text"
 import { useStore } from "@/lib/store"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -110,12 +108,7 @@ function ShellFrame({ children }: { children: ReactNode }) {
 
   function backup() {
     if (!data) return
-    downloadText(
-      `casos-respaldo-${localDateStamp()}.json`,
-      JSON.stringify(data, null, 2),
-      "application/json",
-    )
-    markBackup()
+    downloadWorkspaceBackup(data)
     setBackupTick((value) => value + 1)
     setQuota(null)
     toast.success("Respaldo descargado")
