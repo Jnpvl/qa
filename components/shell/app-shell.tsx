@@ -16,6 +16,8 @@ import {
   ListChecks,
   LogOut,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   Play,
   Waypoints,
   Search,
@@ -87,6 +89,7 @@ function ShellFrame({ children }: { children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   useEffect(() => {
     function onBackendSync(event: Event) {
@@ -127,71 +130,75 @@ function ShellFrame({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", onKey)
   }, [pathname, project, router])
 
-  const links = (
+  const renderLinks = (compact = false) => (
     <nav className="grid gap-1">
-      <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/45">General</p>
-      <ShellLink href="/" active={pathname === "/"} onNavigate={() => setMenuOpen(false)}>
+      {!compact ? <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/45">General</p> : null}
+      <ShellLink label="Proyectos" compact={compact} href="/" active={pathname === "/"} onNavigate={() => setMenuOpen(false)}>
         <FolderKanban />
-        Proyectos
+        <span className={compact ? "sr-only" : ""}>Proyectos</span>
       </ShellLink>
-      {auth.user?.role === "owner" ? <ShellLink href="/organizacion" active={pathname === "/organizacion"} onNavigate={() => setMenuOpen(false)}>
+      {auth.user?.role === "owner" ? <ShellLink label="Organización" compact={compact} href="/organizacion" active={pathname === "/organizacion"} onNavigate={() => setMenuOpen(false)}>
         <Building2 />
-        Organización
+        <span className={compact ? "sr-only" : ""}>Organización</span>
       </ShellLink> : null}
-      {auth.user?.role === "owner" ? <ShellLink href="/actividad" active={pathname === "/actividad"} onNavigate={() => setMenuOpen(false)}>
+      {auth.user?.role === "owner" ? <ShellLink label="Bitácora" compact={compact} href="/actividad" active={pathname === "/actividad"} onNavigate={() => setMenuOpen(false)}>
         <Clock3 />
-        Bitácora
+        <span className={compact ? "sr-only" : ""}>Bitácora</span>
       </ShellLink> : null}
       {project ? <>
-        <div className="mx-3 my-2 border-t border-sidebar-border" />
-        <p className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/45">Proyecto</p>
+        <div className={cn("my-2 border-t border-sidebar-border", compact ? "mx-1" : "mx-3")} />
+        {!compact ? <p className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/45">Proyecto</p> : null}
         {nav.map((item) => {
             const href = `/proyectos/${project.id}/${item.slug}`
             const Icon = item.icon
             return (
               <ShellLink
+                label={item.label}
+                compact={compact}
                 key={item.slug}
                 href={href}
                 active={pathname === href || pathname.startsWith(`${href}/`)}
                 onNavigate={() => setMenuOpen(false)}
               >
                 <Icon />
-                {item.label}
+                <span className={compact ? "sr-only" : ""}>{item.label}</span>
               </ShellLink>
             )
           })}
       </> : null}
-      {!project ? <div className="mx-3 my-2 border-t border-sidebar-border" /> : null}
-      <p className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/45">Ayuda</p>
+      {!project ? <div className={cn("my-2 border-t border-sidebar-border", compact ? "mx-1" : "mx-3")} /> : null}
+      {!compact ? <p className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/45">Ayuda</p> : null}
       <ShellLink
+        label="Ayuda"
+        compact={compact}
         href="/ayuda"
         active={pathname === "/ayuda"}
         onNavigate={() => setMenuOpen(false)}
       >
         <CircleHelp />
-        Ayuda
+        <span className={compact ? "sr-only" : ""}>Ayuda</span>
       </ShellLink>
-    </nav>
+      </nav>
   )
 
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
-      <aside className="fixed inset-y-0 left-0 z-30 hidden h-dvh w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex print:hidden">
-        <Link href="/" className="flex items-center gap-3 border-b border-sidebar-border px-4 py-5">
+      <aside className={cn("fixed inset-y-0 left-0 z-30 hidden h-dvh shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 md:flex print:hidden", sidebarCollapsed ? "w-16" : "w-60")}>
+        <Link href="/" className={cn("flex items-center gap-3 border-b border-sidebar-border py-5", sidebarCollapsed ? "justify-center px-2" : "px-4")}>
           <Mark />
-          <span className="min-w-0"><span className="block truncate text-sm font-semibold tracking-tight">{product.name}</span><span className="mt-0.5 block truncate text-[10px] font-medium uppercase tracking-[0.12em] text-sidebar-foreground/55">Quality workspace</span></span>
+          {!sidebarCollapsed ? <span className="min-w-0"><span className="block truncate text-sm font-semibold tracking-tight">{product.name}</span><span className="mt-0.5 block truncate text-[10px] font-medium uppercase tracking-[0.12em] text-sidebar-foreground/55">Quality workspace</span></span> : null}
         </Link>
-        {project ? (
+        {project && !sidebarCollapsed ? (
           <div className="mx-3 my-3 rounded-lg border border-sidebar-border bg-sidebar-accent/60 px-3 py-2.5"><p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/50">Proyecto activo</p><p className="mt-1 truncate text-xs font-medium">{project.name}</p><p className="mt-1 font-mono text-[10px] text-sidebar-foreground/55">{project.key}</p></div>
         ) : null}
-        <div className="min-h-0 flex-1 overflow-y-auto px-2">{links}</div>
-        <div className="shrink-0 border-t border-sidebar-border p-3">
-          {auth.user?.email ? <p className="mb-2 truncate px-1 text-xs text-sidebar-foreground/60" title={auth.user.email}>{auth.user.email}</p> : null}
-          {auth.authenticated ? <Button variant="ghost" size="sm" className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent" onClick={auth.logout}><LogOut />Cerrar sesión</Button> : null}
+        <div className={cn("min-h-0 flex-1 overflow-y-auto", sidebarCollapsed ? "px-1.5" : "px-2")}>{renderLinks(sidebarCollapsed)}</div>
+        <div className={cn("shrink-0 border-t border-sidebar-border", sidebarCollapsed ? "p-2" : "p-3")}>
+          {auth.user?.email && !sidebarCollapsed ? <p className="mb-2 truncate px-1 text-xs text-sidebar-foreground/60" title={auth.user.email}>{auth.user.email}</p> : null}
+          {auth.authenticated ? <Button title="Cerrar sesión" variant="ghost" size="sm" className={cn("w-full text-sidebar-foreground hover:bg-sidebar-accent", sidebarCollapsed ? "justify-center px-0" : "justify-start")} onClick={auth.logout}><LogOut />{sidebarCollapsed ? <span className="sr-only">Cerrar sesión</span> : "Cerrar sesión"}</Button> : null}
         </div>
       </aside>
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col md:ml-60">
+      <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col transition-[margin] duration-200", sidebarCollapsed ? "md:ml-16" : "md:ml-60")}>
         <header className="sticky top-0 z-20 flex h-14 min-w-0 shrink-0 items-center gap-1.5 overflow-hidden border-b border-border/80 bg-card/90 px-2 shadow-sm backdrop-blur-md sm:gap-2 sm:px-4 print:hidden">
           <Button
             variant="ghost"
@@ -201,6 +208,16 @@ function ShellFrame({ children }: { children: ReactNode }) {
             onClick={() => setMenuOpen(true)}
           >
             <Menu />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hidden md:inline-flex"
+            aria-label={sidebarCollapsed ? "Expandir menú principal" : "Contraer menú principal"}
+            title={sidebarCollapsed ? "Expandir menú principal" : "Contraer menú principal"}
+            onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
           </Button>
           {project ? (
             <DropdownMenu>
@@ -251,7 +268,7 @@ function ShellFrame({ children }: { children: ReactNode }) {
             <SheetTitle className="text-sidebar-foreground">{product.name}</SheetTitle>
           </SheetHeader>
           <div className="flex min-h-0 flex-1 flex-col px-2">
-            <div className="min-h-0 flex-1 overflow-y-auto">{links}</div>
+            <div className="min-h-0 flex-1 overflow-y-auto">{renderLinks()}</div>
             <div className="shrink-0 border-t border-sidebar-border p-3">
               {auth.user?.email ? <p className="mb-2 truncate px-1 text-xs text-sidebar-foreground/60">{auth.user.email}</p> : null}
               {auth.authenticated ? <Button variant="ghost" size="sm" className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent" onClick={() => { auth.logout(); setMenuOpen(false) }}><LogOut />Cerrar sesión</Button> : null}
@@ -305,19 +322,25 @@ function ShellLink({
   active,
   onNavigate,
   children,
+  compact = false,
+  label,
 }: {
   href: string
   active: boolean
   onNavigate: () => void
   children: ReactNode
+  compact?: boolean
+  label?: string
 }) {
   return (
     <Link
       href={href}
       onClick={onNavigate}
       aria-current={active ? "page" : undefined}
+      title={compact ? label : undefined}
       className={cn(
-        "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [&_svg]:size-4 [&_svg]:opacity-75",
+        "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:opacity-75",
+        compact && "justify-center px-0",
         active && "bg-sidebar-accent font-semibold text-sidebar-accent-foreground shadow-sm [&_svg]:text-sidebar-primary [&_svg]:opacity-100",
       )}
     >

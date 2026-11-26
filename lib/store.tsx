@@ -203,6 +203,9 @@ function assertKey(state: DemoState, key: string, ignoreId?: string) {
 }
 
 const actions = {
+  flushPendingSave() {
+    return writeState(current())
+  },
   startEmpty() {
     const next = emptyWorkspace()
     next.initialized = true
@@ -617,7 +620,7 @@ const actions = {
     }
     const steps = cleanSteps(draft.steps)
     const summary = changeSummary(existing, { ...draft, title }, steps)
-    update((next) => {
+    return update((next) => {
       const item = next.cases.find((candidate) => candidate.id === id)
       if (!item) return
       item.suiteId = draft.suiteId

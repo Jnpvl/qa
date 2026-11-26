@@ -39,6 +39,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { EnumSelect } from "@/components/enum-select"
 import { childSuites, descendantIds, effectiveSuitePrefix, flattenSuites, suitePrefixFromName, wouldCycle } from "@/lib/suites"
 import { useStore } from "@/lib/store"
+import { caseCode } from "@/lib/text"
 import { cn } from "@/lib/utils"
 import type { Suite, TestCase } from "@/lib/types"
 
@@ -48,17 +49,34 @@ export function SuiteTree({
   cases,
   selectedId,
   onSelect,
+  showCases = false,
+  activeCaseId,
+  projectKey,
+  onSelectCase,
 }: {
   projectId: string
   suites: Suite[]
   cases: TestCase[]
   selectedId: string | "todas"
   onSelect: (id: string | "todas") => void
+  showCases?: boolean
+  activeCaseId?: string
+  projectKey?: string
+  onSelectCase?: (testCase: TestCase) => void
 }) {
   const store = useStore()
   const projectSuites = suites.filter((suite) => suite.projectId === projectId)
   const projectCases = cases.filter((item) => item.projectId === projectId)
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const activeSuite = projectCases.find((item) => item.id === activeCaseId)?.suiteId
+  const activePath = new Set<string>()
+  let pathSuite = projectSuites.find((suite) => suite.id === activeSuite)
+  while (pathSuite) {
+    activePath.add(pathSuite.id)
+    pathSuite = projectSuites.find((suite) => suite.id === pathSuite?.parentId)
+  }
+  const [collapsed, setCollapsed] = useState<Set<string>>(() =>
+    showCases ? new Set(projectSuites.filter((suite) => !activePath.has(suite.id)).map((suite) => suite.id)) : new Set(),
+  )
   const [removing, setRemoving] = useState<Suite | null>(null)
   const [repairOpen, setRepairOpen] = useState(false)
   const [repairing, setRepairing] = useState(false)
@@ -135,6 +153,10 @@ export function SuiteTree({
               })
             }
             onSelect={onSelect}
+            showCases={showCases}
+            activeCaseId={activeCaseId}
+            projectKey={projectKey}
+            onSelectCase={onSelectCase}
             onCreateChild={(parentId) => setEditor({ mode: "create", parentId })}
             onRename={(target) => setEditor({ mode: "rename", suite: target })}
             onMove={(target) => setEditor({ mode: "move", suite: target })}
@@ -219,6 +241,10 @@ function SuiteNode({
   collapsed,
   onToggle,
   onSelect,
+  showCases = false,
+  activeCaseId,
+  projectKey,
+  onSelectCase,
   onCreateChild,
   onRename,
   onMove,
@@ -234,6 +260,10 @@ function SuiteNode({
   collapsed: Set<string>
   onToggle: (id: string) => void
   onSelect: (id: string) => void
+  showCases?: boolean
+  activeCaseId?: string
+  projectKey?: string
+  onSelectCase?: (testCase: TestCase) => void
   onCreateChild: (parentId: string) => void
   onRename: (suite: Suite) => void
   onMove: (suite: Suite) => void
@@ -255,7 +285,7 @@ function SuiteNode({
         )}
         style={{ paddingLeft: `${depth * 12 + 4}px` }}
       >
-        {children.length > 0 ? (
+        {children.length > 0 || (showCases && cases.some((item) => item.suiteId === suite.id)) ? (
           <button
             type="button"
             className="grid size-5 place-items-center text-muted-foreground"
@@ -301,8 +331,25 @@ function SuiteNode({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      {open
-        ? children.map((child) => (
+      {open ? (
+        <>
+          {showCases && cases.filter((item) => item.suiteId === suite.id).sort((a, b) => a.number - b.number).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              title={`${projectKey ? `${caseCode(projectKey, item.number, item.idPrefix, item.customId)} · ` : ""}${item.title}`}
+              onClick={() => onSelectCase?.(item)}
+              className={cn(
+                "flex min-w-0 items-start gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted",
+                activeCaseId === item.id && "bg-primary/10 font-medium text-foreground",
+              )}
+              style={{ marginLeft: `${depth * 12 + 28}px`, width: `calc(100% - ${depth * 12 + 28}px)` }}
+            >
+              <span className="shrink-0 font-mono text-[10px] text-muted-foreground">{projectKey ? caseCode(projectKey, item.number, item.idPrefix, item.customId) : item.number}</span>
+              <span className="min-w-0 truncate">{item.title || "Sin título"}</span>
+            </button>
+          ))}
+          {children.map((child) => (
             <SuiteNode
               key={child.id}
               suite={child}
@@ -314,14 +361,19 @@ function SuiteNode({
               collapsed={collapsed}
               onToggle={onToggle}
               onSelect={onSelect}
+              showCases={showCases}
+              activeCaseId={activeCaseId}
+              projectKey={projectKey}
+              onSelectCase={onSelectCase}
               onCreateChild={onCreateChild}
               onRename={onRename}
               onMove={onMove}
               onDelete={onDelete}
               onReorder={onReorder}
             />
-          ))
-        : null}
+          ))}
+        </>
+      ) : null}
     </div>
   )
 }

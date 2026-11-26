@@ -1,11 +1,12 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, GripVertical, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { FormField, PageHeader, reportError } from "@/components/bits"
+import { SuiteTree } from "@/components/cases/suite-tree"
 import { EnumSelect } from "@/components/enum-select"
 import { MissingProject } from "@/components/missing-project"
 import {
@@ -23,6 +24,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import {
   caseStatuses,
   caseStatusLabel,
@@ -35,7 +37,7 @@ import {
   severities,
   severityLabel,
 } from "@/lib/labels"
-import { flattenSuites } from "@/lib/suites"
+import { flattenSuites, suitePath } from "@/lib/suites"
 import { formatBytes, readAttachment } from "@/lib/attachments"
 import { FilePicker } from "@/components/file-picker"
 import { caseCode, createId, formatDateTime, normalize } from "@/lib/text"
@@ -101,18 +103,26 @@ export function CaseEditor() {
   const [baseline, setBaseline] = useState("")
   const [tagDraft, setTagDraft] = useState("")
   const [leaveOpen, setLeaveOpen] = useState(false)
+  const [pendingNavigation, setPendingNavigation] = useState<{ destination: string; suiteId?: string | null } | null>(null)
+  const [navigationSuiteId, setNavigationSuiteId] = useState("")
+  const [suiteSheetOpen, setSuiteSheetOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [creatingSuite, setCreatingSuite] = useState(false)
   const [suiteName, setSuiteName] = useState("")
+  const [suiteWidth, setSuiteWidth] = useState(288)
+  const suiteResizeStart = useRef<{ x: number; width: number } | null>(null)
 
   if (project && loadedKey !== loadKey) {
     setLoadedKey(loadKey)
     if (isNew) {
       const preferred = suites.find((suite) => suite.id === store.preferredSuiteId)?.id ?? suites[0]?.id ?? ""
+      setNavigationSuiteId(preferred)
       const next = blank(preferred)
       setDraft(next)
       setBaseline(JSON.stringify(next))
     } else if (testCase) {
+      setNavigationSuiteId(testCase.suiteId)
       const next = toDraft(testCase)
       setDraft(next)
       setBaseline(JSON.stringify(next))
@@ -196,32 +206,89 @@ export function CaseEditor() {
 
   const code = testCase ? caseCode(project.key, testCase.number, testCase.idPrefix, testCase.customId) : "Nuevo"
   const knownTags = [...new Set(data.cases.filter((item) => item.projectId === project.id).flatMap((item) => item.tags))]
+  const currentSuitePath = suitePath(suites, testCase?.suiteId ?? draft.suiteId).join(" / ")
+
+  function startSuiteResize(event: ReactPointerEvent<HTMLDivElement>) {
+    suiteResizeStart.current = { x: event.clientX, width: suiteWidth }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  function moveSuiteResize(event: ReactPointerEvent<HTMLDivElement>) {
+    const start = suiteResizeStart.current
+    if (!start) return
+    setSuiteWidth(Math.min(420, Math.max(220, start.width + event.clientX - start.x)))
+  }
 
   function update(patch: Partial<CaseDraft>) {
     setDraft((current) => (current ? { ...current, ...patch } : current))
   }
 
-  function save() {
-    if (!draft || !project) return
+  async function persistDraft(navigateAfterCreate = true) {
+    if (!draft || !project) return false
     const suiteId = draft.suiteId || flat[0]?.suite.id || ""
     const payload = { ...draft, suiteId }
     try {
       if (isNew) {
         const created = store.createCase(project.id, payload)
+        await store.flushPendingSave()
         toast.success("Caso creado")
         const next = toDraft(created)
         setDraft(next)
         setBaseline(JSON.stringify(next))
-        router.replace(`/proyectos/${project.id}/casos/${created.id}`)
+        if (navigateAfterCreate) router.replace(`/proyectos/${project.id}/casos/${created.id}`)
       } else {
-        store.updateCase(caseId, payload)
-        const saved = JSON.stringify(draft)
+        await store.updateCase(caseId, payload)
+        const saved = JSON.stringify(payload)
         setBaseline(saved)
         toast.success("Caso guardado")
       }
+      return true
     } catch (error) {
       reportError(error)
+      return false
     }
+  }
+
+  async function save() {
+    if (saving) return
+    setSaving(true)
+    await persistDraft()
+    setSaving(false)
+  }
+
+  function requestNavigation(destination: string, suiteId?: string | null) {
+    setSuiteSheetOpen(false)
+    if (dirty) {
+      setPendingNavigation({ destination, suiteId })
+      setLeaveOpen(true)
+    } else {
+      if (suiteId !== undefined) store.setPreferredSuiteId(suiteId)
+      router.push(destination)
+    }
+  }
+
+  async function saveAndNavigate() {
+    if (!pendingNavigation || saving) return
+    const destination = pendingNavigation.destination
+    const suiteId = pendingNavigation.suiteId
+    setSaving(true)
+    const saved = await persistDraft(false)
+    setSaving(false)
+    if (!saved) return
+    setPendingNavigation(null)
+    setLeaveOpen(false)
+    if (suiteId !== undefined) store.setPreferredSuiteId(suiteId)
+    router.push(destination)
+  }
+
+  function discardAndNavigate() {
+    if (!pendingNavigation) return
+    const destination = pendingNavigation.destination
+    const suiteId = pendingNavigation.suiteId
+    setPendingNavigation(null)
+    setLeaveOpen(false)
+    if (suiteId !== undefined) store.setPreferredSuiteId(suiteId)
+    router.push(destination)
   }
 
   function addTag() {
@@ -235,17 +302,61 @@ export function CaseEditor() {
     setTagDraft("")
   }
 
+  const caseCollectionUrl = `/proyectos/${project.id}/casos`
+  const navigation = (
+    <SuiteTree
+      key={caseId}
+      projectId={project.id}
+      suites={suites}
+      cases={data.cases.filter((item) => item.projectId === project.id)}
+      selectedId={navigationSuiteId || "todas"}
+      showCases
+      activeCaseId={testCase?.id}
+      projectKey={project.key}
+      onSelectCase={(item) => requestNavigation(`/proyectos/${project.id}/casos/${item.id}`)}
+      onSelect={(id) => {
+        requestNavigation(caseCollectionUrl, id === "todas" ? null : id)
+      }}
+    />
+  )
+
   return (
+    <div className="flex min-h-full min-w-0">
+      <aside style={{ width: suiteWidth, flexBasis: suiteWidth }} className="sticky top-0 hidden h-[calc(100dvh-3.5rem)] shrink-0 overflow-y-auto border-r bg-card lg:block">
+        {navigation}
+      </aside>
+      <div
+        role="separator"
+        aria-label="Cambiar ancho de suites y casos"
+        aria-orientation="vertical"
+        aria-valuemin={220}
+        aria-valuemax={420}
+        aria-valuenow={suiteWidth}
+        tabIndex={0}
+        title="Arrastra para cambiar el ancho"
+        className="group relative hidden w-3 shrink-0 cursor-col-resize touch-none items-center justify-center bg-transparent text-muted-foreground/60 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:flex"
+        onPointerDown={startSuiteResize}
+        onPointerMove={moveSuiteResize}
+        onPointerUp={() => { suiteResizeStart.current = null }}
+        onPointerCancel={() => { suiteResizeStart.current = null }}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowLeft") setSuiteWidth((width) => Math.max(220, width - 16))
+          if (event.key === "ArrowRight") setSuiteWidth((width) => Math.min(420, width + 16))
+        }}
+      >
+        <GripVertical className="pointer-events-none size-4" aria-hidden="true" />
+      </div>
+      <div className="min-w-0 flex-1">
     <form
       className="mx-auto my-3 grid w-full min-w-0 max-w-screen-2xl gap-5 rounded-2xl border border-border/80 bg-card p-4 shadow-lg shadow-slate-900/[0.035] sm:my-4 sm:p-5 md:my-5 md:p-7 xl:p-8"
       onSubmit={(event) => {
         event.preventDefault()
-        save()
+        void save()
       }}
       onKeyDown={(event) => {
         if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
           event.preventDefault()
-          save()
+          void save()
         }
       }}
     >
@@ -257,10 +368,7 @@ export function CaseEditor() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => {
-                if (dirty) setLeaveOpen(true)
-                else router.push(`/proyectos/${project.id}/casos`)
-              }}
+              onClick={() => requestNavigation(caseCollectionUrl)}
             >
               Volver
             </Button>
@@ -271,7 +379,7 @@ export function CaseEditor() {
                 onClick={() => {
                   try {
                     const copy = store.duplicateCase(caseId)
-                    router.push(`/proyectos/${project.id}/casos/${copy.id}`)
+                    requestNavigation(`/proyectos/${project.id}/casos/${copy.id}`)
                   } catch (error) {
                     reportError(error)
                   }
@@ -285,10 +393,27 @@ export function CaseEditor() {
                 Eliminar
               </Button>
             ) : null}
-            <Button type="submit">{isNew ? "Crear caso" : "Guardar"}</Button>
+            <Button className="lg:hidden" type="button" variant="outline" onClick={() => setSuiteSheetOpen(true)}>Suites y casos</Button>
+            <Button type="submit" disabled={saving}>{saving ? "Guardando…" : isNew ? "Crear caso" : "Guardar"}</Button>
           </>
         }
       />
+
+      <section className="flex min-w-0 flex-wrap items-end justify-between gap-3 rounded-lg border bg-muted/20 p-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium text-muted-foreground">Suite</p>
+          <p className="mt-1 truncate text-sm font-medium" title={currentSuitePath}>{currentSuitePath || "Sin suite"}</p>
+        </div>
+        <div className="flex flex-wrap items-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => requestNavigation(caseCollectionUrl, testCase?.suiteId ?? draft.suiteId)}
+          >
+            Ver casos de la suite
+          </Button>
+        </div>
+      </section>
 
       <FormField label="Título" htmlFor="case-title">
         <Input
@@ -662,20 +787,22 @@ export function CaseEditor() {
         <p className="min-w-0 text-xs text-muted-foreground">
           {dirty ? "Hay cambios sin guardar." : "Sin cambios pendientes."} Ctrl + Enter guarda.
         </p>
-        <Button className="shrink-0" type="submit">{isNew ? "Crear caso" : "Guardar"}</Button>
+        <Button className="shrink-0" type="submit" disabled={saving}>{saving ? "Guardando…" : isNew ? "Crear caso" : "Guardar"}</Button>
       </div>
 
-      <AlertDialog open={leaveOpen} onOpenChange={setLeaveOpen}>
+      <AlertDialog open={leaveOpen} onOpenChange={(open) => {
+        setLeaveOpen(open)
+        if (!open) setPendingNavigation(null)
+      }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Hay cambios sin guardar</AlertDialogTitle>
-            <AlertDialogDescription>Si sales ahora, se pierden los cambios de este caso.</AlertDialogDescription>
+            <AlertDialogDescription>¿Quieres guardar los cambios antes de salir de este caso?</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Seguir editando</AlertDialogCancel>
-            <AlertDialogAction onClick={() => router.push(`/proyectos/${project.id}/casos`)}>
-              Salir
-            </AlertDialogAction>
+            <Button type="button" variant="outline" disabled={saving} onClick={discardAndNavigate}>Descartar y cambiar</Button>
+            <Button type="button" disabled={saving} onClick={() => void saveAndNavigate()}>{saving ? "Guardando…" : "Guardar y cambiar"}</Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -703,6 +830,16 @@ export function CaseEditor() {
         </AlertDialogContent>
       </AlertDialog>
     </form>
+      </div>
+      <Sheet open={suiteSheetOpen} onOpenChange={setSuiteSheetOpen}>
+        <SheetContent side="left" className="w-[min(22rem,90vw)] p-0">
+          <SheetHeader className="border-b px-4 py-3">
+            <SheetTitle>Suites y casos</SheetTitle>
+          </SheetHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto">{navigation}</div>
+        </SheetContent>
+      </Sheet>
+    </div>
   )
 }
 

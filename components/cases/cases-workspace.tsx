@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
 import { useRouter } from "next/navigation"
-import { MoreHorizontal, Plus, X } from "lucide-react"
+import { GripVertical, MoreHorizontal, Plus, X } from "lucide-react"
 import { toast } from "sonner"
 import { EmptyState, FormField, PageHeader, reportError } from "@/components/bits"
 import { SuiteTree } from "@/components/cases/suite-tree"
@@ -89,7 +89,11 @@ export function CasesWorkspace() {
   const [status, setStatus] = useState<CaseStatus | "todos">("todos")
   const [sprintId, setSprintId] = useState<string | "todos">("todos")
   const [tag, setTag] = useState<string | "todas">("todas")
-  const [suiteId, setSuiteId] = useState<string | "todas">("todas")
+  const [suiteId, setSuiteId] = useState<string | "todas">(() =>
+    store.preferredSuiteId && data?.suites.some((item) => item.id === store.preferredSuiteId && item.projectId === project?.id)
+      ? store.preferredSuiteId
+      : "todas",
+  )
   const [sort, setSort] = useState<{ key: CaseSortKey; dir: "asc" | "desc" }>({
     key: "number",
     dir: "asc",
@@ -106,7 +110,7 @@ export function CasesWorkspace() {
   const [bulkTag, setBulkTag] = useState("")
   const [moveError, setMoveError] = useState("")
   const [importOpen, setImportOpen] = useState(false)
-  const [suiteWidth, setSuiteWidth] = useState(256)
+  const [suiteWidth, setSuiteWidth] = useState(288)
   const suiteResizeStart = useRef<{ x: number; width: number } | null>(null)
   const shift = useRef(false)
 
@@ -195,7 +199,7 @@ export function CasesWorkspace() {
   function moveSuiteResize(event: ReactPointerEvent<HTMLDivElement>) {
     const start = suiteResizeStart.current
     if (!start) return
-    setSuiteWidth(Math.min(480, Math.max(220, start.width + event.clientX - start.x)))
+    setSuiteWidth(Math.min(420, Math.max(220, start.width + event.clientX - start.x)))
   }
 
   function toggleOne(id: string, index: number) {
@@ -318,20 +322,22 @@ export function CasesWorkspace() {
         aria-label="Cambiar ancho de la columna de suites"
         aria-orientation="vertical"
         aria-valuemin={220}
-        aria-valuemax={480}
+        aria-valuemax={420}
         aria-valuenow={suiteWidth}
         tabIndex={0}
         title="Arrastra para cambiar el ancho"
-        className="group relative hidden w-1 shrink-0 cursor-col-resize touch-none bg-transparent after:absolute after:inset-y-0 after:left-0 after:w-px after:bg-border hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:block"
+        className="group relative hidden w-3 shrink-0 cursor-col-resize touch-none items-center justify-center bg-transparent text-muted-foreground/60 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:flex"
         onPointerDown={startSuiteResize}
         onPointerMove={moveSuiteResize}
         onPointerUp={() => { suiteResizeStart.current = null }}
         onPointerCancel={() => { suiteResizeStart.current = null }}
         onKeyDown={(event) => {
           if (event.key === "ArrowLeft") setSuiteWidth((width) => Math.max(220, width - 16))
-          if (event.key === "ArrowRight") setSuiteWidth((width) => Math.min(480, width + 16))
+          if (event.key === "ArrowRight") setSuiteWidth((width) => Math.min(420, width + 16))
         }}
-      />
+      >
+        <GripVertical className="pointer-events-none size-4" aria-hidden="true" />
+      </div>
       <div className="mx-auto w-full min-w-0 max-w-screen-2xl flex-1 p-4 md:p-6">
         <div className="grid gap-4">
           <PageHeader
