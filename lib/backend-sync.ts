@@ -58,10 +58,10 @@ export async function bootstrapBackend(localState: DemoState) {
   return null
 }
 
-export function queueBackendSave(state: DemoState) {
-  if (!ready || !tokenProvider) return
+export function queueBackendSave(state: DemoState): Promise<void> {
+  if (!ready || !tokenProvider) return Promise.resolve()
   const snapshot = structuredClone(state)
-  pending = pending.then(async () => {
+  const save = pending.then(async () => {
     const result = await request("/api/v1/workspace", {
       method: "PUT",
       body: JSON.stringify({ state: snapshot, expectedRevision: revision }),
@@ -74,10 +74,12 @@ export function queueBackendSave(state: DemoState) {
     const saved = await result.json() as { revision: number; state?: { members?: DemoState["members"] } }
     revision = saved.revision
     window.dispatchEvent(new CustomEvent("qa-backend-sync", { detail: { status: "saved", members: saved.state?.members } }))
-  }).catch((error: unknown) => {
+  })
+  pending = save.catch((error: unknown) => {
     const message = error instanceof Error ? error.message : "No se pudo sincronizar con el backend."
     window.dispatchEvent(new CustomEvent("qa-backend-sync", { detail: { status: "error", message } }))
   })
+  return save
 }
 
 export function markBackendUnavailable() {

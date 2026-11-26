@@ -26,7 +26,7 @@ import {
   type ImportField,
 } from "@/lib/case-import"
 import { useStore } from "@/lib/store"
-import { caseCode, createId, normalize } from "@/lib/text"
+import { caseCode, createId } from "@/lib/text"
 import { flattenSuites } from "@/lib/suites"
 import type { CaseDraft, TestCase } from "@/lib/types"
 
@@ -80,6 +80,7 @@ export function CaseImportDialog({
   const [rows, setRows] = useState<string[][]>([])
   const [mapping, setMapping] = useState<Record<string, FieldId>>({})
   const [filePickerKey, setFilePickerKey] = useState(0)
+  const [importing, setImporting] = useState(false)
   const headers = rows[0] ?? []
   const body = rows.slice(1)
 
@@ -107,46 +108,23 @@ export function CaseImportDialog({
     return Number(Object.entries(mapping).find(([, value]) => value === field)?.[0] ?? -1)
   }
 
-  function importRows() {
+  async function importRows() {
     if (!data) return
     const titleIndex = column("title")
     if (titleIndex < 0) {
       reportError(new Error("Mapea una columna al título."))
       return
     }
-    const projectSuites = data.suites.filter((item) => item.projectId === projectId)
-    let defaultSuiteId = projectSuites[0]?.id
-    let created = 0
+    const batch: { suitePath: string[]; draft: CaseDraft }[] = []
     try {
       for (const row of body) {
         const title = row[titleIndex]?.trim()
         if (!title) continue
         const suiteName = column("suite") >= 0 ? row[column("suite")]?.trim() : ""
-        let suiteId: string | undefined
-        if (suiteName) {
-          let parentId: string | null = null
-          for (const segment of suiteName.split(/\s*>\s*/).map((part) => part.trim()).filter(Boolean)) {
-            let suite = projectSuites.find((item) => item.parentId === parentId && normalize(item.name) === normalize(segment))
-            if (!suite) {
-              suite = store.createSuite({ projectId, parentId, name: segment, description: "" })
-              projectSuites.push(suite)
-            }
-            parentId = suite.id
-          }
-          suiteId = parentId ?? undefined
-        }
-        if (!suiteId) {
-          if (!defaultSuiteId) {
-            const suite = store.createSuite({ projectId, parentId: null, name: "General", description: "" })
-            defaultSuiteId = suite.id
-            projectSuites.push(suite)
-          }
-          suiteId = defaultSuiteId
-        }
         const kindValue = (column("kind") >= 0 ? row[column("kind")] : "").trim().toLowerCase()
         const importedId = column("id") >= 0 ? row[column("id")]?.trim() : ""
         const draft: CaseDraft = {
-          suiteId: suiteId ?? defaultSuiteId!,
+          suiteId: "",
           customId: importedId || undefined,
           title,
           preconditions: column("preconditions") >= 0 ? row[column("preconditions")] ?? "" : "",
@@ -165,17 +143,27 @@ export function CaseImportDialog({
           automationStatus: "candidato",
           automationRef: "",
         }
-        store.createCase(projectId, draft)
-        created += 1
+        batch.push({
+          suitePath: suiteName.split(/\s*>\s*/).map((part) => part.trim()).filter(Boolean),
+          draft,
+        })
       }
-      if (created === 0) {
+      if (batch.length === 0) {
         reportError(new Error("No se importaron casos. Revisa que el CSV tenga títulos en la columna asignada."))
         return
       }
-      toast.success(created === 1 ? "1 caso importado" : `${created} casos importados`)
+      setImporting(true)
+      const result = await store.importCases(projectId, batch)
+      if (result.imported > 0) {
+        toast.success(`${result.imported} casos importados${result.skipped ? `; ${result.skipped} ya existían y se omitieron` : ""}`)
+      } else {
+        toast.info(`${result.skipped} casos ya existían; no se duplicaron.`)
+      }
       handleOpenChange(false)
     } catch (error) {
       reportError(error)
+    } finally {
+      setImporting(false)
     }
   }
 
@@ -238,8 +226,8 @@ export function CaseImportDialog({
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Cancelar
           </Button>
-          <Button onClick={importRows} disabled={body.length === 0}>
-            Importar
+          <Button onClick={() => void importRows()} disabled={body.length === 0 || importing}>
+            {importing ? "Guardando…" : "Importar"}
           </Button>
         </DialogFooter>
       </DialogContent>

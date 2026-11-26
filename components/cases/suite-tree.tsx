@@ -61,6 +61,7 @@ export function SuiteTree({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [removing, setRemoving] = useState<Suite | null>(null)
   const [repairOpen, setRepairOpen] = useState(false)
+  const [repairing, setRepairing] = useState(false)
   const [editor, setEditor] = useState<
     | { mode: "create"; parentId: string | null }
     | { mode: "rename"; suite: Suite }
@@ -70,6 +71,19 @@ export function SuiteTree({
 
   const roots = childSuites(projectSuites, projectId, null)
   const legacyPaths = roots.filter((suite) => suite.name.includes(" > "))
+
+  async function repairSuitePaths() {
+    setRepairing(true)
+    try {
+      const result = await store.repairImportedSuitePaths(projectId)
+      toast.success(`Jerarquía reparada: ${result.suites} suites y ${result.cases} casos reorganizados.`)
+      setRepairOpen(false)
+    } catch (error) {
+      reportError(error)
+    } finally {
+      setRepairing(false)
+    }
+  }
 
   return (
     <div className="grid gap-2 p-3">
@@ -183,17 +197,10 @@ export function SuiteTree({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => {
-                try {
-                  const result = store.repairImportedSuitePaths(projectId)
-                  toast.success(`Jerarquía reparada: ${result.suites} suites y ${result.cases} casos reorganizados.`)
-                  setRepairOpen(false)
-                } catch (error) {
-                  reportError(error)
-                }
-              }}
+              disabled={repairing}
+              onClick={() => void repairSuitePaths()}
             >
-              Reparar jerarquía
+              {repairing ? "Guardando…" : "Reparar jerarquía"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

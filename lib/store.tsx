@@ -72,9 +72,10 @@ function update(recipe: (draft: DemoState) => void) {
   if (!snapshot) throw new Error("El espacio de trabajo todavía está cargando.")
   const next = structuredClone(snapshot)
   recipe(next)
-  writeState(next)
+  const saved = writeState(next)
   snapshot = next
   emit()
+  return saved
 }
 
 function commitState(next: DemoState) {
@@ -129,6 +130,34 @@ function snapshotCase(item: TestCase): NonNullable<RunResult["caseSnapshot"]> {
     kind: item.kind,
     executionType: item.executionType,
     requirementIds: [...(item.requirementIds ?? [])],
+  }
+}
+
+function buildCaseRecord(projectId: string, draft: CaseDraft, number: number, idPrefix: string): TestCase {
+  const now = new Date().toISOString()
+  return {
+    id: createId("cse"),
+    projectId,
+    number,
+    idPrefix,
+    customId: draft.customId?.trim() || undefined,
+    suiteId: draft.suiteId,
+    title: draft.title.trim(),
+    preconditions: draft.preconditions.trim(),
+    steps: cleanSteps(draft.steps),
+    priority: draft.priority,
+    severity: draft.severity,
+    kind: draft.kind,
+    executionType: draft.executionType,
+    tags: uniqueTags(draft.tags),
+    status: draft.status,
+    sprintIds: [...new Set(draft.sprintIds)],
+    requirementIds: [...new Set(draft.requirementIds)],
+    automationStatus: draft.automationStatus,
+    automationRef: draft.automationRef.trim(),
+    attachments: [],
+    changes: [{ id: createId("chg"), at: now, summary: "Caso creado." }],
+    updatedAt: now,
   }
 }
 
@@ -350,13 +379,13 @@ const actions = {
       }
     })
   },
-  repairImportedSuitePaths(projectId: string) {
+  async repairImportedSuitePaths(projectId: string) {
     const candidates = current().suites.filter(
       (suite) => suite.projectId === projectId && suite.parentId === null && suite.name.includes(" > "),
     )
     if (candidates.length === 0) return { suites: 0, cases: 0 }
     let movedCases = 0
-    update((draft) => {
+    const save = update((draft) => {
       const candidateIds = new Set(candidates.map((suite) => suite.id))
       for (const candidateId of candidateIds) {
         const legacy = draft.suites.find((suite) => suite.id === candidateId)
@@ -412,6 +441,7 @@ const actions = {
         }
       }
     })
+    await save
     return { suites: candidates.length, cases: movedCases }
   },
   deleteSuite(id: string) {
@@ -478,6 +508,83 @@ const actions = {
       })
     })
   },
+  async importCases(projectId: string, rows: { suitePath: string[]; draft: CaseDraft }[]) {
+    const state = current()
+    const project = state.projects.find((item) => item.id === projectId)
+    if (!project) throw new Error("No encontramos el proyecto.")
+    const stagedSuites = structuredClone(state.suites)
+    const createdCases: TestCase[] = []
+    const usedCodes = new Set(
+      state.cases
+        .filter((item) => item.projectId === projectId)
+        .map((item) => caseCode(project.key, item.number, item.idPrefix, item.customId).toUpperCase()),
+    )
+    const titleKeys = new Set(
+      state.cases
+        .filter((item) => item.projectId === projectId)
+        .map((item) => `${item.suiteId}\u0000${normalize(item.title)}`),
+    )
+    let nextNumber = nextCaseNumber(state, projectId)
+    let skipped = 0
+
+    const findOrCreateSuite = (name: string, parentId: string | null) => {
+      let suite = stagedSuites.find(
+        (item) => item.projectId === projectId && item.parentId === parentId && normalize(item.name) === normalize(name),
+      )
+      if (!suite) {
+        const siblings = stagedSuites.filter((item) => item.projectId === projectId && item.parentId === parentId)
+        suite = {
+          id: createId("sui"),
+          projectId,
+          parentId,
+          name,
+          description: "",
+          order: siblings.reduce((max, item) => Math.max(max, item.order + 1), 0),
+        }
+        stagedSuites.push(suite)
+      }
+      return suite
+    }
+
+    for (const row of rows) {
+      const title = row.draft.title.trim()
+      if (!title) continue
+      const path = row.suitePath.map((part) => part.trim()).filter(Boolean)
+      let suiteId: string
+      if (path.length) {
+        let parentId: string | null = null
+        for (const segment of path) parentId = findOrCreateSuite(segment, parentId).id
+        suiteId = parentId!
+      } else {
+        const defaultRoot = stagedSuites.find((item) => item.projectId === projectId && item.parentId === null)
+        suiteId = (defaultRoot ?? findOrCreateSuite("General", null)).id
+      }
+      const titleKey = `${suiteId}\u0000${normalize(title)}`
+      if (titleKeys.has(titleKey)) {
+        skipped += 1
+        continue
+      }
+      const draft = { ...row.draft, suiteId, title }
+      const prefix = effectiveSuitePrefix(stagedSuites, suiteId)
+      const code = caseCode(project.key, nextNumber, prefix, draft.customId).toUpperCase()
+      if (usedCodes.has(code)) throw new Error(`El ID ${draft.customId?.trim() || code} ya existe en este proyecto.`)
+      usedCodes.add(code)
+      titleKeys.add(titleKey)
+      createdCases.push(buildCaseRecord(projectId, draft, nextNumber, prefix))
+      nextNumber += 1
+    }
+
+    const save = update((next) => {
+      next.suites = stagedSuites
+      next.cases.push(...createdCases)
+    })
+    await save
+    return {
+      imported: createdCases.length,
+      skipped,
+      suitesCreated: stagedSuites.length - state.suites.length,
+    }
+  },
   createCase(projectId: string, draft: CaseDraft) {
     const state = current()
     const title = draft.title.trim()
@@ -492,36 +599,7 @@ const actions = {
     if (state.cases.some((item) => item.projectId === projectId && caseCode(projectKey, item.number, item.idPrefix, item.customId).toUpperCase() === nextId.toUpperCase())) {
       throw new Error(`El ID ${nextId} ya existe en este proyecto.`)
     }
-    const testCase: TestCase = {
-      id: createId("cse"),
-      projectId,
-      number: nextNumber,
-      idPrefix: effectiveSuitePrefix(state.suites, draft.suiteId),
-      customId: draft.customId?.trim() || undefined,
-      suiteId: draft.suiteId,
-      title,
-      preconditions: draft.preconditions.trim(),
-      steps: cleanSteps(draft.steps),
-      priority: draft.priority,
-      severity: draft.severity,
-      kind: draft.kind,
-      executionType: draft.executionType,
-      tags: uniqueTags(draft.tags),
-      status: draft.status,
-      sprintIds: [...new Set(draft.sprintIds)],
-      requirementIds: [...new Set(draft.requirementIds)],
-      automationStatus: draft.automationStatus,
-      automationRef: draft.automationRef.trim(),
-      attachments: [],
-      changes: [
-        {
-          id: createId("chg"),
-          at: new Date().toISOString(),
-          summary: "Caso creado.",
-        },
-      ],
-      updatedAt: new Date().toISOString(),
-    }
+    const testCase = buildCaseRecord(projectId, { ...draft, title }, nextNumber, effectiveSuitePrefix(state.suites, draft.suiteId))
     update((next) => {
       next.cases.push(testCase)
     })

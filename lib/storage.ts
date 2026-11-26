@@ -8,5 +8,5 @@ export function readState(): DemoState {
 }
 
 export function writeState(state: DemoState) {
-  queueBackendSave(state)
+  return queueBackendSave(state)
 }

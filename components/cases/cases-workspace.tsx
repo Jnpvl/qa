@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useMemo, useRef, useState } from "react"
+import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
 import { useRouter } from "next/navigation"
 import { MoreHorizontal, Plus, X } from "lucide-react"
 import { toast } from "sonner"
@@ -106,6 +106,8 @@ export function CasesWorkspace() {
   const [bulkTag, setBulkTag] = useState("")
   const [moveError, setMoveError] = useState("")
   const [importOpen, setImportOpen] = useState(false)
+  const [suiteWidth, setSuiteWidth] = useState(256)
+  const suiteResizeStart = useRef<{ x: number; width: number } | null>(null)
   const shift = useRef(false)
 
   const filterKey = [query, priority, execution, status, sprintId, tag, suiteId, sort.key, sort.dir].join("|")
@@ -183,6 +185,17 @@ export function CasesWorkspace() {
         ? { key, dir: current.dir === "asc" ? "desc" : "asc" }
         : { key, dir: key === "title" || key === "updated" ? "asc" : "asc" },
     )
+  }
+
+  function startSuiteResize(event: ReactPointerEvent<HTMLDivElement>) {
+    suiteResizeStart.current = { x: event.clientX, width: suiteWidth }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  function moveSuiteResize(event: ReactPointerEvent<HTMLDivElement>) {
+    const start = suiteResizeStart.current
+    if (!start) return
+    setSuiteWidth(Math.min(480, Math.max(220, start.width + event.clientX - start.x)))
   }
 
   function toggleOne(id: string, index: number) {
@@ -294,9 +307,31 @@ export function CasesWorkspace() {
 
   return (
     <div className="flex min-h-full w-full min-w-0 max-w-full flex-col lg:flex-row">
-      <aside className="sticky top-0 hidden max-h-[calc(100dvh-3rem)] w-64 shrink-0 overflow-y-auto border-r bg-card lg:block">
+      <aside
+        style={{ width: suiteWidth, flexBasis: suiteWidth }}
+        className="sticky top-0 hidden max-h-[calc(100dvh-3rem)] shrink-0 overflow-y-auto border-r bg-card lg:block"
+      >
         {tree}
       </aside>
+      <div
+        role="separator"
+        aria-label="Cambiar ancho de la columna de suites"
+        aria-orientation="vertical"
+        aria-valuemin={220}
+        aria-valuemax={480}
+        aria-valuenow={suiteWidth}
+        tabIndex={0}
+        title="Arrastra para cambiar el ancho"
+        className="group relative hidden w-1 shrink-0 cursor-col-resize touch-none bg-transparent after:absolute after:inset-y-0 after:left-0 after:w-px after:bg-border hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:block"
+        onPointerDown={startSuiteResize}
+        onPointerMove={moveSuiteResize}
+        onPointerUp={() => { suiteResizeStart.current = null }}
+        onPointerCancel={() => { suiteResizeStart.current = null }}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowLeft") setSuiteWidth((width) => Math.max(220, width - 16))
+          if (event.key === "ArrowRight") setSuiteWidth((width) => Math.min(480, width + 16))
+        }}
+      />
       <div className="mx-auto w-full min-w-0 max-w-screen-2xl flex-1 p-4 md:p-6">
         <div className="grid gap-4">
           <PageHeader
