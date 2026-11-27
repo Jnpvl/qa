@@ -284,33 +284,35 @@ export function RunPlayer() {
     )
   }
 
+  const activeRun = run
+  const activeProject = project
   const stats = runStats(run)
   const closed = run.status === "cerrada"
   const sprint = data.sprints.find((item) => item.id === run.sprintId)
-  const configuredEnvironmentOptions = environmentOptions(project)
-  const currentEnvironmentDraft = runEnvironmentDraft?.runId === run.id ? runEnvironmentDraft : null
-  const runEnvironmentChoice = currentEnvironmentDraft?.choice ?? environmentChoiceFor(project, run.environment)
-  const runCustomEnvironment = currentEnvironmentDraft?.customValue ?? (runEnvironmentChoice === "custom" ? run.environment : "")
+  const configuredEnvironmentOptions = environmentOptions(activeProject)
+  const currentEnvironmentDraft = runEnvironmentDraft?.runId === activeRun.id ? runEnvironmentDraft : null
+  const runEnvironmentChoice = currentEnvironmentDraft?.choice ?? environmentChoiceFor(activeProject, activeRun.environment)
+  const runCustomEnvironment = currentEnvironmentDraft?.customValue ?? (runEnvironmentChoice === "custom" ? activeRun.environment : "")
 
   function updateRunEnvironmentChoice(choice: EnvironmentChoice) {
     if (choice !== "custom") {
-      setRunEnvironmentDraft({ runId: run.id, choice, customValue: "" })
-      store.updateRunMeta(run.id, { environment: choice === "none" ? "" : choice })
+      setRunEnvironmentDraft({ runId: activeRun.id, choice, customValue: "" })
+      store.updateRunMeta(activeRun.id, { environment: choice === "none" ? "" : choice })
     } else {
-      const existingCustom = environmentChoiceFor(project, run.environment) === "custom"
+      const existingCustom = environmentChoiceFor(activeProject, activeRun.environment) === "custom"
       setRunEnvironmentDraft({
-        runId: run.id,
+        runId: activeRun.id,
         choice,
-        customValue: existingCustom ? run.environment : "",
+        customValue: existingCustom ? activeRun.environment : "",
       })
-      if (!existingCustom) store.updateRunMeta(run.id, { environment: "" })
+      if (!existingCustom) store.updateRunMeta(activeRun.id, { environment: "" })
     }
   }
 
   function updateRerunEnvironmentChoice(choice: EnvironmentChoice) {
     setRerunEnvironmentChoice(choice)
     if (choice !== "custom") setRerunCustomEnvironment("")
-    else if (environmentChoiceFor(project, run.environment) !== "custom") setRerunCustomEnvironment("")
+    else if (environmentChoiceFor(activeProject, activeRun.environment) !== "custom") setRerunCustomEnvironment("")
   }
 
   function selectCase(nextId: string) {
