@@ -298,10 +298,14 @@ export function CasesWorkspace() {
 
   const tree = (
     <SuiteTree
+      key={suiteId}
       projectId={project.id}
       suites={data.suites}
       cases={data.cases}
       selectedId={suiteId}
+      showCases
+      projectKey={project.key}
+      onSelectCase={(item) => router.push(`/proyectos/${project.id}/casos/${item.id}`)}
       onSelect={(id) => {
         chooseSuite(id)
         setTreeOpen(false)

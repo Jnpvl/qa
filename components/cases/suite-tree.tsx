@@ -67,7 +67,8 @@ export function SuiteTree({
   const store = useStore()
   const projectSuites = suites.filter((suite) => suite.projectId === projectId)
   const projectCases = cases.filter((item) => item.projectId === projectId)
-  const activeSuite = projectCases.find((item) => item.id === activeCaseId)?.suiteId
+  const activeSuite = projectCases.find((item) => item.id === activeCaseId)?.suiteId ??
+    projectSuites.find((suite) => suite.id === selectedId)?.id
   const activePath = new Set<string>()
   let pathSuite = projectSuites.find((suite) => suite.id === activeSuite)
   while (pathSuite) {

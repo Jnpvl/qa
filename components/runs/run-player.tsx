@@ -31,7 +31,34 @@ import { product } from "@/lib/product"
 import { caseCode } from "@/lib/text"
 import { useRouteParam, useWorkspace } from "@/components/use-workspace"
 import { cn } from "@/lib/utils"
-import type { AutomationReport, Priority, ResultStatus, Severity, StepResultStatus, TestCase } from "@/lib/types"
+import type { AutomationReport, Priority, Project, ResultStatus, Severity, StepResultStatus, TestCase } from "@/lib/types"
+
+type EnvironmentChoice = "none" | "local" | "stage" | "production" | "custom"
+
+const environmentLabels: Record<Exclude<EnvironmentChoice, "none" | "custom">, string> = {
+  local: "Desarrollo / local",
+  stage: "Stage",
+  production: "Producción",
+}
+
+function environmentOptions(project: Project) {
+  return (["local", "stage", "production"] as const)
+    .filter((key) => Boolean(project.environments?.[key]?.trim()))
+    .map((key) => ({
+      value: key,
+      label: `${environmentLabels[key]} · ${project.environments[key]}`,
+    }))
+}
+
+function environmentChoiceFor(project: Project, value: string): EnvironmentChoice {
+  if (!value) return "none"
+  if (value === "local" || value === "stage" || value === "production") return value
+  const match = (["local", "stage", "production"] as const).find((key) => {
+    const url = project.environments?.[key]?.trim()
+    return Boolean(url && (value === url || value.startsWith(`${environmentLabels[key]} · ${url}`) || value.startsWith(`${environmentLabels[key]} — ${url}`)))
+  })
+  return match ?? "custom"
+}
 
 const choices: {
   status: Exclude<ResultStatus, "pendiente">
@@ -113,7 +140,13 @@ export function RunPlayer() {
   const [defectOpen, setDefectOpen] = useState(false)
   const [confirmDefect, setConfirmDefect] = useState(false)
   const [rerunOpen, setRerunOpen] = useState(false)
-  const [rerunEnv, setRerunEnv] = useState("")
+  const [runEnvironmentDraft, setRunEnvironmentDraft] = useState<{
+    runId: string
+    choice: EnvironmentChoice
+    customValue: string
+  } | null>(null)
+  const [rerunEnvironmentChoice, setRerunEnvironmentChoice] = useState<EnvironmentChoice>("none")
+  const [rerunCustomEnvironment, setRerunCustomEnvironment] = useState("")
   const [rerunBuild, setRerunBuild] = useState("")
   const run = data?.runs.find((item) => item.id === runId && item.projectId === project?.id)
   const allOrdered = run && data
@@ -254,6 +287,31 @@ export function RunPlayer() {
   const stats = runStats(run)
   const closed = run.status === "cerrada"
   const sprint = data.sprints.find((item) => item.id === run.sprintId)
+  const configuredEnvironmentOptions = environmentOptions(project)
+  const currentEnvironmentDraft = runEnvironmentDraft?.runId === run.id ? runEnvironmentDraft : null
+  const runEnvironmentChoice = currentEnvironmentDraft?.choice ?? environmentChoiceFor(project, run.environment)
+  const runCustomEnvironment = currentEnvironmentDraft?.customValue ?? (runEnvironmentChoice === "custom" ? run.environment : "")
+
+  function updateRunEnvironmentChoice(choice: EnvironmentChoice) {
+    if (choice !== "custom") {
+      setRunEnvironmentDraft({ runId: run.id, choice, customValue: "" })
+      store.updateRunMeta(run.id, { environment: choice === "none" ? "" : choice })
+    } else {
+      const existingCustom = environmentChoiceFor(project, run.environment) === "custom"
+      setRunEnvironmentDraft({
+        runId: run.id,
+        choice,
+        customValue: existingCustom ? run.environment : "",
+      })
+      if (!existingCustom) store.updateRunMeta(run.id, { environment: "" })
+    }
+  }
+
+  function updateRerunEnvironmentChoice(choice: EnvironmentChoice) {
+    setRerunEnvironmentChoice(choice)
+    if (choice !== "custom") setRerunCustomEnvironment("")
+    else if (environmentChoiceFor(project, run.environment) !== "custom") setRerunCustomEnvironment("")
+  }
 
   function selectCase(nextId: string) {
     if (active && activeResult && comment !== activeResult.comment && !closed) {
@@ -308,7 +366,9 @@ export function RunPlayer() {
               <Button
                 variant="outline"
                 onClick={() => {
-                  setRerunEnv(run.environment)
+                  const choice = environmentChoiceFor(project, run.environment)
+                  setRerunEnvironmentChoice(choice)
+                  setRerunCustomEnvironment(choice === "custom" ? run.environment : "")
                   setRerunBuild(run.build)
                   setRerunOpen(true)
                 }}
@@ -352,12 +412,41 @@ export function RunPlayer() {
             />
           </FormLike>
           <FormLike label="Entorno">
-            <Input
-              value={run.environment}
-              aria-label="Entorno"
-              placeholder="Staging"
-              onChange={(event) => store.updateRunMeta(run.id, { environment: event.target.value })}
-            />
+            {closed ? (
+              <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                {run.environment
+                  ? configuredEnvironmentOptions.find((item) => item.value === run.environment)?.label ?? run.environment
+                  : "Sin especificar"}
+              </p>
+            ) : (
+              <div className="grid gap-2">
+                <EnumSelect
+                  ariaLabel="Entorno"
+                  value={runEnvironmentChoice}
+                  onChange={updateRunEnvironmentChoice}
+                  options={[
+                    { value: "none", label: "Sin especificar" },
+                    ...configuredEnvironmentOptions,
+                    { value: "custom", label: "Otro entorno…" },
+                  ]}
+                />
+                {runEnvironmentChoice === "custom" ? (
+                  <Input
+                    aria-label="Nombre del entorno"
+                    placeholder="QA local"
+                    value={runCustomEnvironment}
+                    onChange={(event) => {
+                      setRunEnvironmentDraft({
+                        runId: run.id,
+                        choice: "custom",
+                        customValue: event.target.value,
+                      })
+                      store.updateRunMeta(run.id, { environment: event.target.value })
+                    }}
+                  />
+                ) : null}
+              </div>
+            )}
           </FormLike>
           <FormLike label="Build o versión">
             <Input
@@ -680,7 +769,26 @@ export function RunPlayer() {
           </AlertDialogHeader>
           <div className="grid gap-3">
             <FormLike label="Entorno">
-              <Input aria-label="Entorno de la nueva corrida" value={rerunEnv} onChange={(event) => setRerunEnv(event.target.value)} />
+              <div className="grid gap-2">
+                <EnumSelect
+                  ariaLabel="Entorno de la nueva corrida"
+                  value={rerunEnvironmentChoice}
+                  onChange={updateRerunEnvironmentChoice}
+                  options={[
+                    { value: "none", label: "Sin especificar" },
+                    ...configuredEnvironmentOptions,
+                    { value: "custom", label: "Otro entorno…" },
+                  ]}
+                />
+                {rerunEnvironmentChoice === "custom" ? (
+                  <Input
+                    aria-label="Nombre del entorno de la nueva corrida"
+                    placeholder="QA local"
+                    value={rerunCustomEnvironment}
+                    onChange={(event) => setRerunCustomEnvironment(event.target.value)}
+                  />
+                ) : null}
+              </div>
             </FormLike>
             <FormLike label="Build o versión">
               <Input aria-label="Versión de la nueva corrida" value={rerunBuild} onChange={(event) => setRerunBuild(event.target.value)} />
@@ -701,7 +809,9 @@ export function RunPlayer() {
                     planId: run.planId,
                     caseIds: ids,
                     assigneeId: run.assigneeId,
-                    environment: rerunEnv,
+                    environment: rerunEnvironmentChoice === "custom"
+                      ? rerunCustomEnvironment
+                      : rerunEnvironmentChoice === "none" ? "" : rerunEnvironmentChoice,
                     build: rerunBuild,
                   })
                   toast.success("Corrida creada con fallidos y bloqueados")
